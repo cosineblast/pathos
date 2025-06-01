@@ -1,5 +1,7 @@
 mod check;
 mod syntax;
+
+#[cfg(test)]
 mod tests;
 
 fn main() {

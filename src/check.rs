@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::syntax;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ValueType {
     Int,
     Array,
@@ -36,7 +37,8 @@ impl From<syntax::SyntaxType> for ValueType {
 
 // 1. check if all names exist
 // 2. check if all types match
-// 3. check if all path returns
+// 3. check if mutability of parameters is respected
+// 4. check if all path return
 pub fn check_module(module: &syntax::Module) -> Result<(), CheckError> {
     check_module_names(module)?;
 
@@ -211,10 +213,252 @@ impl NameAnalysisState {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum CheckError {
     NameNotFound(String),
     ProcedureNotFound(String),
     ProcedureAsExpression(String),
     LocalVariableAsProcedure(String),
+
+    ReturnTypeMismatch {
+        procedure_name: String,
+        expression: syntax::Expression,
+        expected: ValueType,
+        got: ValueType,
+    },
+
+    ArrayTypeInIfConditional {
+        procedure_name: String,
+        expression: syntax::Expression,
+    },
+
+    ArrayTypeInWhileConditional {
+        procedure_name: String,
+        expression: syntax::Expression,
+    },
+    AssignmentTypeMismatch {
+        procedure_name: String,
+        target_name: String,
+        expression: syntax::Expression,
+        expected: ValueType,
+        got: ValueType,
+    },
+    CallTypeMismatch {
+        procedure_name: String,
+        expression: syntax::Expression,
+        argument_index: usize,
+        expected: ValueType,
+        got: ValueType,
+    },
+}
+
+fn check_types(module: &syntax::Module) -> Result<(), CheckError> {
+    Ok(())
+}
+
+struct TypeStack {
+    all_types: HashMap<String, Vec<ValueType>>,
+    past_frames: Vec<Vec<String>>,
+    active_frame: Vec<String>,
+}
+
+impl TypeStack {
+    fn new() -> Self {
+        TypeStack {
+            all_types: HashMap::new(),
+            past_frames: vec![],
+            active_frame: vec![],
+        }
+    }
+
+    fn new_frame(&mut self) {
+        let active_frame = std::mem::replace(&mut self.active_frame, vec![]);
+        self.past_frames.push(active_frame);
+    }
+
+    fn push_type_binding(&mut self, name: &str, ty: ValueType) {
+        self.all_types
+            .entry(name.to_string())
+            .and_modify(|it| it.push(ty))
+            .or_insert_with(|| vec![ty]);
+
+        self.active_frame.push(name.to_string());
+    }
+
+    fn type_of(&self, name: &str) -> Option<ValueType> {
+        self.all_types
+            .get(name)
+            .map(|stack| *stack.last().expect("no type associated with name in map"))
+    }
+
+    fn end_frame(&mut self) {
+        for name in self.active_frame.iter() {
+            let stack = self.all_types.get_mut(name).expect("expected name");
+
+            match stack.len() {
+                0 => panic!("empty type stack in map"),
+                1 => {
+                    self.all_types.remove(name);
+                }
+                _ => {
+                    stack.pop();
+                }
+            };
+        }
+
+        self.active_frame = self.past_frames.pop().unwrap_or_else(|| vec![]);
+    }
+}
+
+struct TypeAnalysisState {
+    procedure_types: HashMap<String, ProcedureType>,
+    types: TypeStack,
+    expected_return_type: ValueType,
+    current_procedure_name: String,
+}
+
+impl TypeAnalysisState {
+    fn check_procedure(&mut self, procedure: &syntax::Procedure) -> Result<(), CheckError> {
+        // TODO: do this when initializing state instead
+        let procedure_type: ProcedureType = procedure.into();
+
+        self.expected_return_type = procedure_type.return_type;
+
+        self.current_procedure_name = procedure.name.clone();
+
+        for parameter in procedure.parameters.iter() {
+            self.types
+                .push_type_binding(&parameter.name, parameter.the_type.into());
+        }
+
+        self.check_block(&procedure.body)?;
+
+        Ok(())
+    }
+
+    fn check_block(&mut self, block: &syntax::Block) -> Result<(), CheckError> {
+        for statement in block.0.iter() {
+            self.check_statement(statement);
+        }
+
+        Ok(())
+    }
+
+    fn check_statement(&mut self, statement: &syntax::Statement) -> Result<(), CheckError> {
+        match statement {
+            syntax::Statement::Return(expression) => {
+                let inferred_type = self.infer(expression)?;
+
+                if inferred_type != self.expected_return_type {
+                    return Err(CheckError::ReturnTypeMismatch {
+                        procedure_name: self.current_procedure_name.clone(),
+                        expression: expression.clone(),
+                        expected: self.expected_return_type,
+                        got: inferred_type,
+                    });
+                }
+            }
+            syntax::Statement::If(expression, then_block, else_block) => {
+                let inferred_type = self.infer(expression)?;
+
+                if inferred_type != ValueType::Int {
+                    return Err(CheckError::ArrayTypeInIfConditional {
+                        procedure_name: self.current_procedure_name.clone(),
+                        expression: expression.clone(),
+                    });
+                }
+
+                self.check_block(then_block)?;
+
+                if let Some(else_block) = else_block {
+                    self.check_block(else_block)?;
+                }
+            }
+            syntax::Statement::While(expression, block) => {
+                let inferred_type = self.infer(expression)?;
+
+                if inferred_type != ValueType::Int {
+                    return Err(CheckError::ArrayTypeInWhileConditional {
+                        procedure_name: self.current_procedure_name.clone(),
+                        expression: expression.clone(),
+                    });
+                }
+
+                self.check_block(block)?;
+            }
+
+            syntax::Statement::Assignment(target, expression) => match target {
+                syntax::Expression::Name(target_name) => {
+                    let target_type = self
+                        .types
+                        .type_of(target_name)
+                        .expect("name checking failed");
+                    let value_type = self.infer(expression)?;
+
+                    if target_type != value_type {
+                        return Err(CheckError::AssignmentTypeMismatch {
+                            procedure_name: self.current_procedure_name.clone(),
+                            target_name: target_name.clone(),
+                            expression: expression.clone(),
+                            expected: target_type,
+                            got: value_type,
+                        });
+                    }
+                }
+                _ => todo!(),
+            },
+            syntax::Statement::Declaration(ty, name, expression) => {
+                let ty: ValueType = (*ty).into();
+                let inferred_type = self.infer(expression)?;
+
+                if ty != inferred_type {
+                    return Err(CheckError::AssignmentTypeMismatch {
+                        procedure_name: self.current_procedure_name.clone(),
+                        target_name: name.clone(),
+                        expression: expression.clone(),
+                        expected: ty,
+                        got: inferred_type,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn infer(&self, expression: &syntax::Expression) -> Result<ValueType, CheckError> {
+        match expression {
+            syntax::Expression::Literal(_) => Ok(ValueType::Int),
+            syntax::Expression::Name(name) => {
+                Ok(self.types.type_of(name).expect("name check failed"))
+            }
+            syntax::Expression::Call(procedure_name, expressions) => {
+                let procedure_type = self
+                    .procedure_types
+                    .get(procedure_name)
+                    .expect("name check failed");
+
+                for (i, (parameter_type, argument_expression)) in procedure_type
+                    .parameters
+                    .iter()
+                    .zip(expressions.iter())
+                    .enumerate()
+                {
+                    let inferred = self.infer(argument_expression)?;
+
+                    if *parameter_type != inferred {
+                        return Err(CheckError::CallTypeMismatch {
+                            procedure_name: self.current_procedure_name.clone(),
+                            expression: expression.clone(),
+                            argument_index: i,
+                            expected: parameter_type.clone(),
+                            got: inferred,
+                        });
+                    }
+                }
+
+                Ok(procedure_type.return_type)
+            }
+        }
+    }
 }
