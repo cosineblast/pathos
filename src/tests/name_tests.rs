@@ -1,5 +1,5 @@
 use crate::{
-    check::{self, CheckError, check_module},
+    check::{self, CheckError, full_check},
     syntax,
 };
 
@@ -16,7 +16,7 @@ fn check_module_succeeds_when_given_empty_procedure() {
     )
     .unwrap();
 
-    assert_matches!(check::check_module(&module), Ok(()));
+    assert_matches!(check::full_check(&module), Ok(()));
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn check_module_succeeds_when_given_existent_variables() {
     )
     .unwrap();
 
-    assert_matches!(check::check_module(&module), Ok(()));
+    assert_matches!(check::full_check(&module), Ok(()));
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn check_module_fails_when_name_does_not_exist() {
     .unwrap();
 
     assert_matches!(
-        check_module(&module),
+        full_check(&module),
         Err(check::CheckError::NameNotFound(name))
         if name == "c"
     );
@@ -84,7 +84,7 @@ fn check_module_respects_block_scopes() {
     .unwrap();
 
     assert_matches!(
-        check_module(&module),
+        full_check(&module),
         Err(check::CheckError::NameNotFound(name))
         if name == "c"
     );
@@ -107,7 +107,7 @@ fn check_module_respects_shawdoing() {
     )
     .unwrap();
 
-    assert_matches!(check_module(&module), Ok(()));
+    assert_matches!(full_check(&module), Ok(()));
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn check_module_is_aware_of_other_procedures() {
     )
     .unwrap();
 
-    assert_matches!(check_module(&module), Ok(()));
+    assert_matches!(full_check(&module), Ok(()));
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn check_module_is_aware_of_parameters() {
     )
     .unwrap();
 
-    assert_matches!(check_module(&module), Ok(()));
+    assert_matches!(full_check(&module), Ok(()));
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn check_module_fails_when_local_is_used_for_procedure() {
     )
     .unwrap();
 
-    assert_matches!(check_module(&module), Ok(()));
+    assert_matches!(full_check(&module), Ok(()));
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn check_module_fails_when_procedure_is_used_instead_of_local() {
     .unwrap();
 
     assert_matches!(
-        check_module(&module),
+        full_check(&module),
         Err(CheckError::ProcedureAsExpression(name))
         if name == "foo"
     );
@@ -199,7 +199,7 @@ fn check_module_fails_when_local_is_used_instead_of_procedure() {
     .unwrap();
 
     assert_matches!(
-        check_module(&module),
+        full_check(&module),
         Err(CheckError::LocalVariableAsProcedure(name))
         if name == "x"
     );

@@ -33,9 +33,11 @@ return = { "return" ~ expression }
 
 // Expresssion Syntax
 
-expression = { call | name | int_literal }
+expression = { call | lookup | name | int_literal }
 
 call = { name ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+
+lookup = { name ~ "[" ~ expression ~ "]" }
 
 int_literal = { "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
 

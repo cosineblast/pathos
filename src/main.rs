@@ -5,17 +5,26 @@ mod syntax;
 mod tests;
 
 fn main() {
+    eprintln!();
+    eprintln!("Opening example.txt...");
+
     let input = std::fs::read_to_string("example.txt").unwrap();
+
+    eprintln!("Parsing example.txt...");
 
     match syntax::parse_module(&input) {
         Ok(result) => {
-            eprintln!("parsed tree: {:?}", result);
+            eprintln!("Parse Tree: ");
+            eprintln!(
+                "parsed tree: {}",
+                serde_json::to_string_pretty(&result).unwrap()
+            );
 
-            eprintln!("checking...");
+            eprintln!("Checking the module...");
 
-            match check::check_module(&result) {
-                Ok(()) => eprintln!("all right!"),
-                Err(err) => eprintln!("check failed: {:?}", err),
+            match check::full_check(&result) {
+                Ok(()) => eprintln!("All right!"),
+                Err(err) => eprintln!("Source code did not pass analysis check: {:?}", err),
             }
         }
 

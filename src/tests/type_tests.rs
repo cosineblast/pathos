@@ -1,15 +1,31 @@
 use crate::{
-    check::{self, CheckError, check_module},
+    check::{CheckError, ValueType},
     syntax,
 };
 
 use assert_matches::assert_matches;
 
 #[test]
-fn check_module_checks_return_correctly() {
+fn type_check_checks_return() {
     let module = syntax::parse_module(
         r#"
-            
+            array get(array a, int i) {
+            	return a[i];
+            }
         "#,
+    )
+    .unwrap();
+
+    assert_matches!(
+        crate::check::full_check(&module),
+        Err(
+            CheckError::ReturnTypeMismatch {
+            procedure_name: procedure,
+            expected: ValueType::Array,
+            got: ValueType::Int,
+            ..
+        })
+
+        if procedure == "get"
     );
 }
