@@ -1,4 +1,4 @@
-mod check;
+mod analysis;
 mod syntax;
 
 #[cfg(test)]
@@ -22,7 +22,7 @@ fn main() {
 
             eprintln!("Checking the module...");
 
-            match check::full_check(&result) {
+            match analysis::full_check(&result) {
                 Ok(()) => eprintln!("All right!"),
                 Err(err) => eprintln!("Source code did not pass analysis check: {:?}", err),
             }

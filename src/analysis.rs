@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    any::Any,
+    collections::{HashMap, HashSet},
+};
 
 use crate::syntax;
 
@@ -6,6 +9,53 @@ use crate::syntax;
 pub enum ValueType {
     Int,
     Array,
+}
+
+#[derive(Debug)]
+pub enum CheckError {
+    NameNotFound(String),
+    ProcedureNotFound(String),
+    ProcedureAsExpression(String),
+    LocalVariableAsProcedure(String),
+
+    ReturnTypeMismatch {
+        procedure_name: String,
+        expression: syntax::Expression,
+        expected: ValueType,
+        got: ValueType,
+    },
+
+    ArrayTypeInIfConditional {
+        procedure_name: String,
+        expression: syntax::Expression,
+    },
+
+    ArrayTypeInWhileConditional {
+        procedure_name: String,
+        expression: syntax::Expression,
+    },
+    AssignmentTypeMismatch {
+        procedure_name: String,
+        target_name: String,
+        expression: syntax::Expression,
+        expected: ValueType,
+        got: ValueType,
+    },
+    CallTypeMismatch {
+        procedure_name: String,
+        expression: syntax::Expression,
+        argument_index: usize,
+        expected: ValueType,
+        got: ValueType,
+    },
+    TriedToIndexInt {
+        procedure_name: String,
+        value_name: String,
+    },
+    TriedToUseArrayAsIndex {
+        procedure_name: String,
+        expression: Box<syntax::Expression>,
+    },
 }
 
 struct ProcedureType {
@@ -247,53 +297,6 @@ impl NameAnalysisState {
     }
 }
 
-#[derive(Debug)]
-pub enum CheckError {
-    NameNotFound(String),
-    ProcedureNotFound(String),
-    ProcedureAsExpression(String),
-    LocalVariableAsProcedure(String),
-
-    ReturnTypeMismatch {
-        procedure_name: String,
-        expression: syntax::Expression,
-        expected: ValueType,
-        got: ValueType,
-    },
-
-    ArrayTypeInIfConditional {
-        procedure_name: String,
-        expression: syntax::Expression,
-    },
-
-    ArrayTypeInWhileConditional {
-        procedure_name: String,
-        expression: syntax::Expression,
-    },
-    AssignmentTypeMismatch {
-        procedure_name: String,
-        target_name: String,
-        expression: syntax::Expression,
-        expected: ValueType,
-        got: ValueType,
-    },
-    CallTypeMismatch {
-        procedure_name: String,
-        expression: syntax::Expression,
-        argument_index: usize,
-        expected: ValueType,
-        got: ValueType,
-    },
-    TriedToIndexInt {
-        procedure_name: String,
-        value_name: String,
-    },
-    TriedToUseArrayAsIndex {
-        procedure_name: String,
-        expression: Box<syntax::Expression>,
-    },
-}
-
 struct TypeStack {
     all_types: HashMap<String, Vec<ValueType>>,
     past_frames: Vec<Vec<String>>,
@@ -357,13 +360,6 @@ struct TypeAnalysisState {
 
 impl TypeAnalysisState {
     fn check_procedure(&mut self, procedure: &syntax::Procedure) -> Result<(), CheckError> {
-        // TODO: do this when initializing state instead
-        let procedure_type: ProcedureType = procedure.into();
-
-        self.expected_return_type = procedure_type.return_type;
-
-        self.current_procedure_name = procedure.name.clone();
-
         for parameter in procedure.parameters.iter() {
             self.types
                 .push_type_binding(&parameter.name, parameter.the_type.into());
@@ -375,9 +371,13 @@ impl TypeAnalysisState {
     }
 
     fn check_block(&mut self, block: &syntax::Block) -> Result<(), CheckError> {
+        self.types.new_frame();
+
         for statement in block.0.iter() {
             self.check_statement(statement)?;
         }
+
+        self.types.end_frame();
 
         Ok(())
     }

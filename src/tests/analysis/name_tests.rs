@@ -1,12 +1,12 @@
 use crate::{
-    check::{self, CheckError, full_check},
+    analysis::{self, CheckError, full_check},
     syntax,
 };
 
 use assert_matches::assert_matches;
 
 #[test]
-fn check_module_succeeds_when_given_empty_procedure() {
+fn full_check_succeeds_when_given_empty_procedure() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -16,11 +16,11 @@ fn check_module_succeeds_when_given_empty_procedure() {
     )
     .unwrap();
 
-    assert_matches!(check::full_check(&module), Ok(()));
+    assert_matches!(analysis::full_check(&module), Ok(()));
 }
 
 #[test]
-fn check_module_succeeds_when_given_existent_variables() {
+fn full_check_succeeds_when_given_existent_variables() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -37,11 +37,11 @@ fn check_module_succeeds_when_given_existent_variables() {
     )
     .unwrap();
 
-    assert_matches!(check::full_check(&module), Ok(()));
+    assert_matches!(analysis::full_check(&module), Ok(()));
 }
 
 #[test]
-fn check_module_fails_when_name_does_not_exist() {
+fn full_check_fails_when_name_does_not_exist() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -60,13 +60,13 @@ fn check_module_fails_when_name_does_not_exist() {
 
     assert_matches!(
         full_check(&module),
-        Err(check::CheckError::NameNotFound(name))
+        Err(analysis::CheckError::NameNotFound(name))
         if name == "c"
     );
 }
 
 #[test]
-fn check_module_respects_block_scopes() {
+fn full_check_respects_block_scopes() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -85,13 +85,13 @@ fn check_module_respects_block_scopes() {
 
     assert_matches!(
         full_check(&module),
-        Err(check::CheckError::NameNotFound(name))
+        Err(analysis::CheckError::NameNotFound(name))
         if name == "c"
     );
 }
 
 #[test]
-fn check_module_respects_shawdoing() {
+fn full_check_respects_shawdoing() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -111,7 +111,7 @@ fn check_module_respects_shawdoing() {
 }
 
 #[test]
-fn check_module_is_aware_of_other_procedures() {
+fn full_check_is_aware_of_other_procedures() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -129,7 +129,7 @@ fn check_module_is_aware_of_other_procedures() {
 }
 
 #[test]
-fn check_module_is_aware_of_parameters() {
+fn full_check_is_aware_of_parameters() {
     let module = syntax::parse_module(
         r#"
                 int main(int a, int b) {
@@ -147,7 +147,7 @@ fn check_module_is_aware_of_parameters() {
 }
 
 #[test]
-fn check_module_fails_when_local_is_used_for_procedure() {
+fn full_check_fails_when_local_is_used_for_procedure() {
     let module = syntax::parse_module(
         r#"
                 int main(int a, int b) {
@@ -165,7 +165,7 @@ fn check_module_fails_when_local_is_used_for_procedure() {
 }
 
 #[test]
-fn check_module_fails_when_procedure_is_used_instead_of_local() {
+fn full_check_fails_when_procedure_is_used_instead_of_local() {
     let module = syntax::parse_module(
         r#"
                 int main() {
@@ -187,7 +187,7 @@ fn check_module_fails_when_procedure_is_used_instead_of_local() {
 }
 
 #[test]
-fn check_module_fails_when_local_is_used_instead_of_procedure() {
+fn full_check_fails_when_local_is_used_instead_of_procedure() {
     let module = syntax::parse_module(
         r#"
                 int main() {
