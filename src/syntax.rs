@@ -247,6 +247,6 @@ mod test {
             "#,
         );
 
-        // TODO: insta goes here
+        insta::assert_yaml_snapshot!(result.unwrap());
     }
 }
