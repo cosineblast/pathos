@@ -375,6 +375,20 @@ mod test {
         insta::assert_yaml_snapshot!(result.unwrap());
     }
 
+    #[test]
+    fn test_underline_is_ok() {
+        let result = parse_module(
+            r#"
+                int beep_boop() {
+                    int beep_ = 1;
+                    int _boop = 2;
+                    return 0;
+                }
+            "#,
+        );
+
+        let _ = result.unwrap();
+    }
 
     #[test]
     fn test_simple_precedence() {

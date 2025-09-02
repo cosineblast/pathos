@@ -50,7 +50,10 @@ int_literal = { "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
 
 type = { "int" | "array" }
 
-name = { ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+alpha = { ASCII_ALPHA | "_" }
+alphanumeric = { ASCII_ALPHANUMERIC | "_" }
+
+name = { alpha ~ alphanumeric* }
 
 // Misc
 
