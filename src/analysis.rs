@@ -288,6 +288,7 @@ impl NameAnalysisState {
 
                 self.check_expression(expression)?;
             }
+            syntax::Expression::BinaryOperation(_, _, _) => todo!(),
         };
 
         Ok(())
@@ -542,6 +543,7 @@ impl TypeAnalysisState {
 
                 Ok(ValueType::Int)
             }
+            syntax::Expression::BinaryOperation(_, _, _) => todo!(),
         }
     }
 }

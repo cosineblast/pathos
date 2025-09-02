@@ -1,0 +1,16 @@
+---
+source: src/syntax.rs
+expression: result.unwrap()
+---
+- name: subsub
+  parameters: []
+  return_type: Int
+  body:
+    - Return:
+        BinaryOperation:
+          - Subtract
+          - BinaryOperation:
+              - Subtract
+              - Literal: 1
+              - Literal: 2
+          - Literal: 3

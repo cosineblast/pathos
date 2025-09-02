@@ -48,7 +48,31 @@ pub enum Expression {
     Name(String),
     Call(String, Vec<Expression>),
     Lookup(String, Box<Expression>),
+    BinaryOperation(ArithmeticOperation, Box<Expression>, Box<Expression>)
 }
+
+#[derive(Debug, Clone, Serialize, Copy)]
+pub enum ArithmeticOperation {
+    Add, Subtract, Multiply, Divide
+}
+
+impl TryFrom<char> for ArithmeticOperation {
+    type Error = &'static str;
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        use ArithmeticOperation as A;
+        
+        match value {
+            '+' => Ok(A::Add),
+            '-' => Ok(A::Subtract),
+            '*' => Ok(A::Multiply),
+            '/' => Ok(A::Divide),
+            _ => Err("unknown character")
+        }
+    }
+}
+
+
 
 fn get_type(input: Pair<Rule>) -> SyntaxType {
     match input.as_str() {
@@ -68,7 +92,7 @@ fn get_parameter(param: Pair<Rule>) -> Parameter {
     let name = param.next().unwrap().as_str().to_string();
 
     Parameter {
-        name: name,
+        name,
         the_type,
     }
 }
@@ -77,8 +101,89 @@ fn get_parameters(params: Pair<Rule>) -> Vec<Parameter> {
     params.into_inner().map(get_parameter).collect()
 }
 
-fn get_expression(expr: Pair<Rule>) -> Expression {
-    assert_eq!(expr.as_rule(), Rule::expression);
+
+#[derive(Debug)]
+enum ExpressionItem {
+    Expression(Expression),
+    Operator(ArithmeticOperation),
+}
+
+
+fn parse_expression_items<I>(items: &mut std::iter::Peekable<I>) -> Expression
+    where I: Iterator<Item=ExpressionItem> {
+    return parse_expression_items_until(items, 0)
+}
+
+fn parse_expression_items_until<I>(items: &mut std::iter::Peekable<I>, min_precedence: u64) -> Expression 
+    where I: Iterator<Item=ExpressionItem>
+    {
+
+    let mut left = match items.next().unwrap() {
+        ExpressionItem::Expression(expr) => expr,
+        ExpressionItem::Operator(_) => unreachable!(),
+    };
+
+    loop {
+       let operator = *match items.peek() {
+           Some(ExpressionItem::Operator(op)) => op,
+           None => break,
+           Some(ExpressionItem::Expression(_)) => unreachable!(),
+       };
+
+       let precedence = operator_precedence(operator);
+
+       if precedence <= min_precedence {
+           break;
+       }
+
+       items.next();
+
+       let right = parse_expression_items_until(items, precedence);
+
+       left = Expression::BinaryOperation(operator, Box::new(left), Box::new(right))
+    }
+
+    return left;
+}
+
+fn operator_precedence(operator: ArithmeticOperation) -> u64 {
+    use ArithmeticOperation as A;
+    
+    match operator {
+        A::Add => 6,
+        A::Multiply => 8,
+        A::Subtract => 6,
+        A::Divide => 8
+    }
+}
+
+
+
+
+fn get_expression(general_expression: Pair<Rule>) -> Expression {
+    assert_eq!(general_expression.as_rule(), Rule::expression);
+
+    let items =  general_expression.into_inner().map(|expr| {
+        match expr.as_rule() {
+            Rule::binary_operator => {
+                let c =  expr.as_str().chars().next().unwrap();
+                ExpressionItem::Operator(c.try_into().unwrap())
+            },
+
+            Rule::core_expression => {
+                ExpressionItem::Expression(get_core_expression(expr))
+            }
+
+            _ => unreachable!()
+        }
+    });
+
+    return parse_expression_items(&mut items.peekable());
+}
+
+
+fn get_core_expression(expr: Pair<Rule>) -> Expression {
+    assert_eq!(expr.as_rule(), Rule::core_expression);
 
     let expr = expr.into_inner().next().unwrap();
     let rule = expr.as_rule();
@@ -98,7 +203,7 @@ fn get_expression(expr: Pair<Rule>) -> Expression {
             Expression::Name(r)
         }
 
-        Rule::int_literal => Expression::Literal(expr.as_str().parse().unwrap()),
+        Rule::int_literal => Expression::Literal(expr.as_str().trim().parse().unwrap()),
 
         Rule::lookup => {
             let mut expr = expr.into_inner();
@@ -107,6 +212,12 @@ fn get_expression(expr: Pair<Rule>) -> Expression {
                 expr.next().unwrap().as_str().to_string(),
                 Box::new(get_expression(expr.next().unwrap())),
             )
+        }
+
+        Rule::paren_expression => {
+            let mut expr = expr.into_inner();
+
+            get_expression(expr.next().unwrap())
         }
 
         unexpected => {
@@ -209,19 +320,16 @@ fn get_procedure(procedure: Pair<Rule>) -> Procedure {
     let parameters = get_parameters(procedure.next().unwrap());
 
     Procedure {
-        name: name,
-        parameters: parameters,
-        return_type: return_type,
+        name,
+        parameters,
+        return_type,
         body: get_block(procedure.next().unwrap()),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use assert_matches::assert_matches;
-
-    use crate::syntax::{Module, Procedure};
-
+     
     use super::parse_module;
 
     #[test]
@@ -243,6 +351,50 @@ mod test {
 
                 array foo() {
                     
+                }
+            "#,
+        );
+
+        insta::assert_yaml_snapshot!(result.unwrap());
+    }
+
+    #[test]
+    fn test_paren_expression() {
+        let result = parse_module(
+            r#"
+                int main() {
+                    return ((foo()));
+                }
+
+                int foo() {
+                    return 0;
+                }
+            "#,
+        );
+
+        insta::assert_yaml_snapshot!(result.unwrap());
+    }
+
+
+    #[test]
+    fn test_simple_precedence() {
+        let result = parse_module(
+            r#"
+                int addmul() {
+                    return 1 + 2 * 3 * 4 + 5;
+                }
+            "#,
+        );
+
+        insta::assert_yaml_snapshot!(result.unwrap());
+    }
+
+    #[test]
+    fn test_subtraction_precedence() {
+        let result = parse_module(
+            r#"
+                int subsub() {
+                    return 1 - 2 - 3;
                 }
             "#,
         );

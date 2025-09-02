@@ -1,0 +1,22 @@
+---
+source: src/syntax.rs
+expression: result.unwrap()
+---
+- name: addmul
+  parameters: []
+  return_type: Int
+  body:
+    - Return:
+        BinaryOperation:
+          - Add
+          - BinaryOperation:
+              - Add
+              - Literal: 1
+              - BinaryOperation:
+                  - Multiply
+                  - BinaryOperation:
+                      - Multiply
+                      - Literal: 2
+                      - Literal: 3
+                  - Literal: 4
+          - Literal: 5

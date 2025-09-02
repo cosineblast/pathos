@@ -1,0 +1,18 @@
+---
+source: src/syntax.rs
+expression: result.unwrap()
+---
+- name: main
+  parameters: []
+  return_type: Int
+  body:
+    - Return:
+        Call:
+          - foo
+          - []
+- name: foo
+  parameters: []
+  return_type: Int
+  body:
+    - Return:
+        Literal: 0
