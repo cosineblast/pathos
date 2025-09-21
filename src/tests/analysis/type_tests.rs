@@ -1,5 +1,5 @@
 use crate::{
-    check::{CheckError, ValueType},
+    analysis::{CheckError, ValueType},
     syntax,
 };
 
@@ -17,7 +17,7 @@ fn type_check_checks_return() {
     .unwrap();
 
     assert_matches!(
-        crate::check::full_check(&module),
+        crate::analysis::full_check(&module),
         Err(
             CheckError::ReturnTypeMismatch {
             procedure_name: procedure,
