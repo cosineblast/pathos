@@ -33,6 +33,7 @@ pub enum IRExpression {
     Add(IRValueId, IRValueId),
     Sub(IRValueId, IRValueId),
     Mul(IRValueId, IRValueId),
+    Div(IRValueId, IRValueId),
     Deref { array: IRValueId, index: IRValueId },
     Call { name: String, args: Vec<IRValueId> }
 }
@@ -145,16 +146,44 @@ impl IRGenerationState {
                 self.target_segment.push(
                     IRInstruction::Declare(id.clone(), IRExpression::Deref{
                         array: array_id,
-                        index: index_id
-                    })
-                );
+                        index: index_id,
+                    },
+                ));
 
                 id
             }
-            syntax::Expression::BinaryOperation(_, _, _) => todo!(),
-             
+            syntax::Expression::BinaryOperation(operation, left, right) => {
+                let left_value = self.codegen_expression(&left);
+                let right_value = self.codegen_expression(&right);
+
+                let (ir_expression, name) = Self::get_ir_expression_for_binary_operation(
+                    *operation,
+                    left_value,
+                    right_value,
+                );
+                let id = self.new_value(name);
+
+                self.target_segment
+                    .push(IRInstruction::Declare(id.clone(), ir_expression));
+
+                id
+            }
         }
-        
+    }
+
+    fn get_ir_expression_for_binary_operation(
+        operator: syntax::ArithmeticOperation,
+        left: IRValueId,
+        right: IRValueId,
+    ) -> (IRExpression, &'static str) {
+        use syntax::ArithmeticOperation as Op;
+
+        match operator {
+            Op::Add => (IRExpression::Add(left, right), "$add"),
+            Op::Subtract => (IRExpression::Sub(left, right), "$sub"),
+            Op::Multiply => (IRExpression::Mul(left, right), "$mul"),
+            Op::Divide => (IRExpression::Div(left, right), "$div"),
+        }
     }
 
     fn new_value(&mut self, base: &str) -> IRValueId {
