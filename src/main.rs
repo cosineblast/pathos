@@ -2,6 +2,8 @@
 #[allow(dead_code)]
 mod analysis;
 #[allow(dead_code)]
+mod generation;
+#[allow(dead_code)]
 mod syntax;
 
 #[cfg(test)]

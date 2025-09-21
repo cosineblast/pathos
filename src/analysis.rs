@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::syntax;
 
@@ -298,14 +295,14 @@ impl NameAnalysisState {
 }
 
 
-struct BindingStack<T> {
+pub struct BindingStack<T> {
     all_values: HashMap<String, Vec<T>>,
     past_frames: Vec<Vec<String>>,
     active_frame: Vec<String>,
 }
 
 impl<T> BindingStack<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         BindingStack {
             all_values: HashMap::new(),
             past_frames: vec![],
@@ -313,12 +310,12 @@ impl<T> BindingStack<T> {
         }
     }
 
-    fn new_frame(&mut self) {
+    pub fn new_frame(&mut self) {
         let active_frame = std::mem::replace(&mut self.active_frame, vec![]);
         self.past_frames.push(active_frame);
     }
 
-    fn push_binding(&mut self, name: &str, value: T) {
+    pub fn push_binding(&mut self, name: &str, value: T) {
         self.all_values
             .entry(name.to_string())
             .or_default()
@@ -327,13 +324,13 @@ impl<T> BindingStack<T> {
         self.active_frame.push(name.to_string());
     }
 
-    fn binding_of(&self, name: &str) -> Option<&T> {
+    pub fn binding_of(&self, name: &str) -> Option<&T> {
         self.all_values
             .get(name)
             .map(|stack| stack.last().expect("no type associated with name in map"))
     }
 
-    fn end_frame(&mut self) {
+    pub fn end_frame(&mut self) {
         for name in self.active_frame.iter() {
             let stack = self.all_values.get_mut(name).expect("expected name");
 

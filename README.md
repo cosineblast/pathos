@@ -11,9 +11,11 @@ question: What counts as the paradigm of a language?
 
 ## TODO
 
-- Write pest grammar
-- Implement arithmetic in parser (eugh)
-- Implement wasm backend
+- [ ] Write pest grammar
+- [ ] Refine pest grammar
+- [ ] Implement arithmetic in parser (eugh)
+- [ ] Implement IR
+- [ ] Implement wasm backend
 
 ## The language
 
