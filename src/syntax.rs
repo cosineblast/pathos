@@ -1,14 +1,16 @@
 use pest::{Parser, error::Error, iterators::Pair};
 use pest_derive::Parser;
 
+use serde::Serialize;
+
 #[derive(Parser)]
 #[grammar = "syntax.pest"]
 pub struct TheParser;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Module(pub Vec<Procedure>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Procedure {
     pub name: String,
     pub parameters: Vec<Parameter>,
@@ -16,22 +18,22 @@ pub struct Procedure {
     pub body: Block,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Parameter {
     pub name: String,
     pub the_type: SyntaxType,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum SyntaxType {
     Int,
     Array,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Block(pub Vec<Statement>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Statement {
     Return(Expression),
     If(Expression, Box<Block>, Option<Box<Block>>),
@@ -40,11 +42,12 @@ pub enum Statement {
     Declaration(SyntaxType, String, Expression),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Expression {
     Literal(i64),
     Name(String),
     Call(String, Vec<Expression>),
+    Lookup(String, Box<Expression>),
 }
 
 fn get_type(input: Pair<Rule>) -> SyntaxType {
@@ -95,9 +98,15 @@ fn get_expression(expr: Pair<Rule>) -> Expression {
             Expression::Name(r)
         }
 
-        Rule::int_literal => {
-            eprintln!("{:?}", expr);
-            Expression::Literal(expr.as_str().parse().unwrap())
+        Rule::int_literal => Expression::Literal(expr.as_str().parse().unwrap()),
+
+        Rule::lookup => {
+            let mut expr = expr.into_inner();
+
+            Expression::Lookup(
+                expr.next().unwrap().as_str().to_string(),
+                Box::new(get_expression(expr.next().unwrap())),
+            )
         }
 
         unexpected => {

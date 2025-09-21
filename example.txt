@@ -1,5 +1,5 @@
 
 
-int foo(int x, int y) {
-	return add(x, y, 1, jooj());
+array get(array a, int i) {
+	return a;
 }

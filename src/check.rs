@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::syntax;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum ValueType {
+pub enum ValueType {
     Int,
     Array,
 }
@@ -39,8 +39,49 @@ impl From<syntax::SyntaxType> for ValueType {
 // 2. check if all types match
 // 3. check if mutability of parameters is respected
 // 4. check if all path return
-pub fn check_module(module: &syntax::Module) -> Result<(), CheckError> {
-    check_module_names(module)?;
+pub fn full_check(module: &syntax::Module) -> Result<(), CheckError> {
+    name_check(module)?;
+    type_check(module)?;
+
+    Ok(())
+}
+
+pub fn name_check(module: &syntax::Module) -> Result<(), CheckError> {
+    let mut state = NameAnalysisState {
+        stack: NameStack::new(),
+        procedure_names: module
+            .0
+            .iter()
+            .map(|procedure| procedure.name.to_string())
+            .collect(),
+    };
+
+    for procedure in module.0.iter() {
+        state.check_procedure_names(procedure)?;
+    }
+
+    Ok(())
+}
+
+pub fn type_check(module: &syntax::Module) -> Result<(), CheckError> {
+    let mut procedure_types: HashMap<String, ProcedureType> = module
+        .0
+        .iter()
+        .map(|procedure| (procedure.name.to_string(), procedure.into()))
+        .collect();
+
+    for procedure in module.0.iter() {
+        let mut state = TypeAnalysisState {
+            procedure_types,
+            types: TypeStack::new(),
+            expected_return_type: procedure.return_type.into(),
+            current_procedure_name: procedure.name.clone(),
+        };
+
+        state.check_procedure(procedure)?;
+
+        procedure_types = state.procedure_types;
+    }
 
     Ok(())
 }
@@ -93,23 +134,6 @@ impl NameStack {
 
         self.active_frame = self.past_frames.pop().unwrap_or_else(|| vec![]);
     }
-}
-
-fn check_module_names(module: &syntax::Module) -> Result<(), CheckError> {
-    let mut state = NameAnalysisState {
-        stack: NameStack::new(),
-        procedure_names: module
-            .0
-            .iter()
-            .map(|procedure| procedure.name.to_string())
-            .collect(),
-    };
-
-    for procedure in module.0.iter() {
-        state.check_procedure_names(procedure)?;
-    }
-
-    Ok(())
 }
 
 struct NameAnalysisState {
@@ -183,7 +207,7 @@ impl NameAnalysisState {
         expression: &syntax::Expression,
     ) -> Result<(), CheckError> {
         match expression {
-            syntax::Expression::Literal(_) => (), // okay!
+            syntax::Expression::Literal(_) => (),
             syntax::Expression::Name(name) => {
                 if !self.stack.contains(name) {
                     if self.procedure_names.contains(name) {
@@ -193,7 +217,6 @@ impl NameAnalysisState {
                     }
                 }
             }
-
             syntax::Expression::Call(procedure_name, arguments) => {
                 if !self.procedure_names.contains(procedure_name) {
                     if self.stack.contains(&procedure_name) {
@@ -206,6 +229,17 @@ impl NameAnalysisState {
                 for argument in arguments.iter() {
                     self.check_expression(argument)?;
                 }
+            }
+            syntax::Expression::Lookup(name, expression) => {
+                if !self.stack.contains(name) {
+                    if self.procedure_names.contains(name) {
+                        return Err(CheckError::ProcedureAsExpression(name.clone()));
+                    } else {
+                        return Err(CheckError::NameNotFound(name.clone()));
+                    }
+                }
+
+                self.check_expression(expression)?;
             }
         };
 
@@ -250,10 +284,14 @@ pub enum CheckError {
         expected: ValueType,
         got: ValueType,
     },
-}
-
-fn check_types(module: &syntax::Module) -> Result<(), CheckError> {
-    Ok(())
+    TriedToIndexInt {
+        procedure_name: String,
+        value_name: String,
+    },
+    TriedToUseArrayAsIndex {
+        procedure_name: String,
+        expression: Box<syntax::Expression>,
+    },
 }
 
 struct TypeStack {
@@ -338,7 +376,7 @@ impl TypeAnalysisState {
 
     fn check_block(&mut self, block: &syntax::Block) -> Result<(), CheckError> {
         for statement in block.0.iter() {
-            self.check_statement(statement);
+            self.check_statement(statement)?;
         }
 
         Ok(())
@@ -420,6 +458,8 @@ impl TypeAnalysisState {
                         got: inferred_type,
                     });
                 }
+
+                self.types.push_type_binding(name, ty);
             }
         }
 
@@ -458,6 +498,27 @@ impl TypeAnalysisState {
                 }
 
                 Ok(procedure_type.return_type)
+            }
+            syntax::Expression::Lookup(name, expression) => {
+                let value_type = self.types.type_of(name).expect("name check failed");
+
+                if value_type != ValueType::Array {
+                    return Err(CheckError::TriedToIndexInt {
+                        procedure_name: self.current_procedure_name.clone(),
+                        value_name: name.clone(),
+                    });
+                }
+
+                let expression_type = self.infer(expression)?;
+
+                if expression_type != ValueType::Int {
+                    return Err(CheckError::TriedToUseArrayAsIndex {
+                        procedure_name: self.current_procedure_name.clone(),
+                        expression: expression.clone(),
+                    });
+                }
+
+                Ok(ValueType::Int)
             }
         }
     }
