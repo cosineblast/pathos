@@ -304,10 +304,21 @@ pub fn parse_module(input: &str) -> Result<Module, Error<Rule>> {
     Ok(Module(result))
 }
 
+/// Convenience function to parse a module and get the first procedure.
+/// This function does allow input to contain more than one procedure.
 pub fn parse_procedure(input: &str) -> Result<Procedure, Error<Rule>> {
-    let result = TheParser::parse(Rule::procedure, input)?.next().unwrap();
+    let mut result = parse_module(input)?;
 
-    Ok(get_procedure(result))
+    if result.0.get(0).is_some() {
+        return Ok(result.0.swap_remove(0));
+    } else {
+        return Err(pest::error::Error::new_from_pos(
+            pest::error::ErrorVariant::CustomError {
+                message: "No procedure found in module".into(),
+            },
+            pest::Position::from_start(input),
+        ));
+    }
 }
 
 fn get_procedure(procedure: Pair<Rule>) -> Procedure {
@@ -330,7 +341,7 @@ fn get_procedure(procedure: Pair<Rule>) -> Procedure {
 #[cfg(test)]
 mod test {
      
-    use super::parse_module;
+    use super::{parse_module, parse_procedure};
 
     #[test]
     fn test_complex_module() {
@@ -414,5 +425,31 @@ mod test {
         );
 
         insta::assert_yaml_snapshot!(result.unwrap());
+    }
+
+    #[test]
+    fn test_parse_procedure_works() {
+        let result = parse_procedure(
+            r#"
+                int main() {
+                    return 0;
+                }
+            "#,
+        );
+
+        let _ = result.unwrap();
+    }
+
+    #[test]
+    fn test_parse_procedure_fails_with_empty_module() {
+
+        use assert_matches::assert_matches;
+        
+        let result = parse_procedure(
+            r#"
+            "#,
+        );
+
+        assert_matches!(result, Err(_));
     }
 }
