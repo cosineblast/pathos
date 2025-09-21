@@ -85,10 +85,10 @@ impl From<syntax::SyntaxType> for ValueType {
     }
 }
 
-// 1. check if all names exist
-// 2. check if all types match
-// 3. check if mutability of parameters is respected
-// 4. check if all path return
+// 1. [X] check if all names exist
+// 2. [X] check if all types match
+// 3. [ ] check if mutability of parameters is respected
+// 4. [ ] check if all paths return
 pub fn full_check(module: &syntax::Module) -> Result<(), CheckError> {
     name_check(module)?;
     type_check(module)?;
@@ -297,16 +297,17 @@ impl NameAnalysisState {
     }
 }
 
-struct TypeStack {
-    all_types: HashMap<String, Vec<ValueType>>,
+
+struct BindingStack<T> {
+    all_values: HashMap<String, Vec<T>>,
     past_frames: Vec<Vec<String>>,
     active_frame: Vec<String>,
 }
 
-impl TypeStack {
+impl<T> BindingStack<T> {
     fn new() -> Self {
-        TypeStack {
-            all_types: HashMap::new(),
+        BindingStack {
+            all_values: HashMap::new(),
             past_frames: vec![],
             active_frame: vec![],
         }
@@ -317,29 +318,29 @@ impl TypeStack {
         self.past_frames.push(active_frame);
     }
 
-    fn push_type_binding(&mut self, name: &str, ty: ValueType) {
-        self.all_types
+    fn push_binding(&mut self, name: &str, value: T) {
+        self.all_values
             .entry(name.to_string())
-            .and_modify(|it| it.push(ty))
-            .or_insert_with(|| vec![ty]);
+            .or_default()
+            .push(value);
 
         self.active_frame.push(name.to_string());
     }
 
-    fn type_of(&self, name: &str) -> Option<ValueType> {
-        self.all_types
+    fn binding_of(&self, name: &str) -> Option<&T> {
+        self.all_values
             .get(name)
-            .map(|stack| *stack.last().expect("no type associated with name in map"))
+            .map(|stack| stack.last().expect("no type associated with name in map"))
     }
 
     fn end_frame(&mut self) {
         for name in self.active_frame.iter() {
-            let stack = self.all_types.get_mut(name).expect("expected name");
+            let stack = self.all_values.get_mut(name).expect("expected name");
 
             match stack.len() {
                 0 => panic!("empty type stack in map"),
                 1 => {
-                    self.all_types.remove(name);
+                    self.all_values.remove(name);
                 }
                 _ => {
                     stack.pop();
@@ -348,6 +349,30 @@ impl TypeStack {
         }
 
         self.active_frame = self.past_frames.pop().unwrap_or_else(|| vec![]);
+    }
+}
+
+struct TypeStack(BindingStack<ValueType>);
+
+impl TypeStack {
+    fn new() -> Self {
+        TypeStack(BindingStack::new())
+    }
+
+    fn new_frame(&mut self) {
+        self.0.new_frame();
+    }
+
+    fn push_type_binding(&mut self, name: &str, ty: ValueType) {
+        self.0.push_binding(name, ty);
+    }
+
+    fn type_of(&self, name: &str) -> Option<ValueType> {
+        self.0.binding_of(name).map(|it| *it)
+    }
+
+    fn end_frame(&mut self) {
+        self.0.end_frame();
     }
 }
 
