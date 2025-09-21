@@ -1,0 +1,19 @@
+---
+source: src/generation.rs
+expression: ir
+---
+segments:
+  0:
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 1
+    - Declare:
+        - - abc
+          - 0
+        - AnotherValue:
+            - $lit
+            - 0
+    - Return:
+        - abc
+        - 0

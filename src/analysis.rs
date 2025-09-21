@@ -331,6 +331,12 @@ impl<T> BindingStack<T> {
             .map(|stack| stack.last().expect("no type associated with name in map"))
     }
 
+    pub fn binding_of_mut(&mut self, name: &str) -> Option<&mut T> {
+        self.all_values
+            .get_mut(name)
+            .map(|stack| stack.last_mut().expect("no type associated with name in map"))
+    }
+
     pub fn end_frame(&mut self) {
         for name in self.active_frame.iter() {
             let stack = self.all_values.get_mut(name).expect("expected name");

@@ -86,9 +86,14 @@ struct IRGenerationState {
 impl IRGenerationState {
 
     fn codegen_block(&mut self, block: &syntax::Block) {
+
+        self.bindings.new_frame();
+        
         for statement in block.0.iter() {
             self.codegen_statement(statement)
         }
+
+        self.bindings.end_frame();
     }
 
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
@@ -103,10 +108,37 @@ impl IRGenerationState {
             },
             syntax::Statement::If(_expression, _block, _block1) => todo!(),
             syntax::Statement::While(_expression, _block) => todo!(),
-            syntax::Statement::Assignment(_expression, _expression1) => todo!(),
-            syntax::Statement::Declaration(_syntax_type, _, _expression) => todo!(),
+            syntax::Statement::Assignment(target, expression) => {
+                let name = match target {
+                    syntax::Expression::Name(name) => name,
+                    syntax::Expression::Lookup(_, _) => todo!(),
+                    _ => todo!()
+                };
+
+                let expr_value = self.codegen_expression(expression);
+
+                let new_value = self.new_value(name);
+
+                let bound_value = self.bindings.binding_of_mut(name).unwrap();
+                *bound_value = new_value.clone();
+
+                self.target_segment.push(
+                    IRInstruction::Declare(new_value, IRExpression::AnotherValue(expr_value))
+                );
+                
+            },
+            syntax::Statement::Declaration(_syntax_type, name, expression) => {
+                let expr_value = self.codegen_expression(expression);
+
+                let new_value = self.new_value(name);
+
+                self.bindings.push_binding(name.as_str(), new_value.clone());
+
+                self.target_segment.push(
+                    IRInstruction::Declare(new_value, IRExpression::AnotherValue(expr_value))
+                );
+            },
         }
-        
     }
 
     fn codegen_expression(&mut self, expression: &syntax::Expression) -> IRValueId {
@@ -217,14 +249,28 @@ mod test {
     }
 
     #[test]
-    fn generates_assignment_numbers() {
+    fn generates_declaration_ir() {
+        let source = r#"
+            int foo() {
+                int abc = 1;
+                return abc;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
+
+    #[test]
+    fn generates_assignment_ir() {
         let source = r#"
             int foo() {
                 int a = 1;
                 int b = a + 1;
-                a = a * 10;
-                int c = a + 1
-                return c;
+                return b;
             }
         "#;
 
