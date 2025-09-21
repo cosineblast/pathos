@@ -1,0 +1,50 @@
+
+
+file = { SOI ~ procedure+ ~ EOI }
+
+// Procedure syntax
+procedure = { type ~ name ~ "(" ~ parameters ~ ")" ~ curly_block }
+
+parameters = { (parameter ~ ("," ~ parameter)*)? }
+
+parameter = { type ~ name }
+
+// Statement syntax
+block = { statement* }
+
+curly_block = _{ "{" ~ block ~ "}" }
+
+statement = {  line_statement ~ ";" | block_statement } 
+line_statement = _{ declaration | assignment | return }
+block_statement = _{ if | while }
+
+if = { 
+	"if" ~ "(" ~ expression ~ ")" ~ curly_block
+  ~ ("else" ~ curly_block)?
+}
+  
+while = { "while" ~ "(" ~ expression ~ ")" ~ curly_block }
+
+declaration = { type ~  name ~ "=" ~ expression }
+
+assignment = { expression ~ "=" ~ expression }
+
+return = { "return" ~ expression }
+
+// Expresssion Syntax
+
+expression = { call | name | int_literal }
+
+call = { name ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+
+int_literal = { "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+
+
+type = { "int" | "array" }
+
+name = { ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+
+// Misc
+
+WHITESPACE = _{ " " | "\n" | "\t" }
+
