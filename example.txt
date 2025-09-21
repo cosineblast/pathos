@@ -1,5 +1,5 @@
 
 
-array get(array a, int i) {
-	return a;
+int foo() {
+	return 1 + 2;
 }

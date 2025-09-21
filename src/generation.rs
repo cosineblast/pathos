@@ -151,6 +151,7 @@ impl IRGenerationState {
 
                 id
             }
+            syntax::Expression::BinaryOperation(_, _, _) => todo!(),
              
         }
         
