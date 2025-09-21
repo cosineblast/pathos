@@ -1,0 +1,32 @@
+---
+source: src/syntax.rs
+expression: result.unwrap()
+---
+- name: main
+  parameters: []
+  return_type: Int
+  body:
+    - Declaration:
+        - Array
+        - f
+        - Call:
+            - foo
+            - []
+    - Declaration:
+        - Int
+        - a
+        - Literal: 10
+    - Declaration:
+        - Int
+        - b
+        - Literal: 20
+    - If:
+        - Name: a
+        - - Return:
+              Name: b
+        - - Return:
+              Name: a
+- name: foo
+  parameters: []
+  return_type: Array
+  body: []
