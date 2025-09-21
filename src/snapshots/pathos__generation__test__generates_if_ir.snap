@@ -14,24 +14,25 @@ segments:
         - AnotherValue:
             - $lit
             - 0
+    - ConditionalJump:
+        - - a
+          - 0
+        - 2
+        - 3
+  2:
     - Declare:
         - - $lit
           - 1
-        - Literal: 1
-    - Declare:
-        - - $add
-          - 0
-        - Add:
-            - - a
-              - 0
-            - - $lit
-              - 1
-    - Declare:
-        - - b
-          - 0
-        - AnotherValue:
-            - $add
-            - 0
+        - Literal: 10
     - Return:
-        - b
-        - 0
+        - $lit
+        - 1
+    - InconditionalJump: 3
+  3:
+    - Declare:
+        - - $lit
+          - 2
+        - Literal: 20
+    - Return:
+        - $lit
+        - 2

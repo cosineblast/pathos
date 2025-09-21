@@ -1,7 +1,7 @@
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 
 use crate::{analysis, syntax};
 
@@ -50,12 +50,26 @@ pub struct IRSegment(Vec<IRInstruction>);
 // root segment is necessarily zero
 #[derive(Serialize)]
 pub struct ProcedureIR {
+    #[serde(serialize_with = "ordered_map")]
     segments: HashMap<u64, IRSegment>,
+}
+
+
+fn ordered_map<S, K: Ord + Serialize, V: Serialize>(
+    value: &HashMap<K, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let ordered: BTreeMap<_, _> = value.iter().collect();
+    ordered.serialize(serializer)
 }
 
 pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
     let mut state = IRGenerationState {
         counters: HashMap::new(),
+        current_segment_id: 0,
         next_segment_id: 1,
         values_types: HashMap::new(),
         target_segment: vec![],
@@ -63,18 +77,16 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
         segments: HashMap::new()
     };
 
-    state.codegen_block(&procedure.body);
+    let _ = state.codegen_block(&procedure.body);
 
-    let target_segment = std::mem::replace(&mut state.target_segment, vec![]);
-    let mut segments = std::mem::replace(&mut state.segments, HashMap::new());
-
-    segments.insert(0, IRSegment(target_segment));
-
+    let segments = state.segments;
+    
     return ProcedureIR { segments }
 }
 
 struct IRGenerationState {
     counters: HashMap<String, u64>,
+    current_segment_id: u64,
     next_segment_id: u64,
  
     values_types: HashMap<IRValueId, RuntimeValueType>,
@@ -85,8 +97,14 @@ struct IRGenerationState {
 
 impl IRGenerationState {
 
-    fn codegen_block(&mut self, block: &syntax::Block) {
+    fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId) {
 
+        let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+        let target = std::mem::replace(&mut self.target_segment, vec![]);
+
+        let next = self.next_segment_id;
+        self.next_segment_id += 1;
+        
         self.bindings.new_frame();
         
         for statement in block.0.iter() {
@@ -94,6 +112,13 @@ impl IRGenerationState {
         }
 
         self.bindings.end_frame();
+
+        let end = std::mem::replace(&mut self.current_segment_id, current);
+        let end_segment = std::mem::replace(&mut self.target_segment, target);
+
+        self.segments.insert(end, IRSegment(end_segment));
+
+        return (IRSegmentId(next), IRSegmentId(end))
     }
 
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
@@ -106,7 +131,49 @@ impl IRGenerationState {
                     IRInstruction::Return(value)
                 )
             },
-            syntax::Statement::If(_expression, _block, _block1) => todo!(),
+            syntax::Statement::If(condition, then_block, else_block) => {
+
+                let condition_value = self.codegen_expression(condition);
+
+                if let Some(else_block) = else_block {
+                    let (then_start, then_end) = self.codegen_block(&then_block);
+                    let (else_start, else_end) = self.codegen_block(&else_block);
+
+                    self.target_segment.push(
+                        IRInstruction::ConditionalJump(condition_value, then_start, else_start)
+                    );
+
+                    let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+                    let target = std::mem::replace(&mut self.target_segment, vec![]);
+
+                    self.segments.insert(current, IRSegment(target));
+
+                    // self.current_segment_id is now the final segment 
+                    
+                    self.segments.get_mut(&then_end.0).unwrap().0.push(
+                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    );
+
+                    self.segments.get_mut(&else_end.0).unwrap().0.push(
+                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    );
+                } else {
+                    let (then_start, then_end) = self.codegen_block(&then_block);
+
+                    self.target_segment.push(
+                        IRInstruction::ConditionalJump(condition_value, then_start, IRSegmentId(self.next_segment_id))
+                    );
+
+                    let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+                    let target = std::mem::replace(&mut self.target_segment, vec![]);
+
+                    self.segments.insert(current, IRSegment(target));
+
+                    self.segments.get_mut(&then_end.0).unwrap().0.push(
+                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    );
+                }
+            },
             syntax::Statement::While(_expression, _block) => todo!(),
             syntax::Statement::Assignment(target, expression) => {
                 let name = match target {
@@ -225,7 +292,6 @@ impl IRGenerationState {
 
         return (base.into(), *counter)
     }
-    
 }
 
 #[cfg(test)]
@@ -279,5 +345,47 @@ mod test {
         let ir = codegen_procedure(&procedure);
 
         insta::assert_yaml_snapshot!(ir);
+    }
+
+    #[test]
+    fn generates_if_ir() {
+        let source = r#"
+            int foo() {
+                int a = 1;
+                if (a) {
+                    return 10;
+                }
+                return 20;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
+
+    
+    #[test]
+    fn generates_if_else_ir() {
+        let source = r#"
+            int foo() {
+                int a = 1;
+                if (a) {
+                    return 10;
+                } else {
+                    return 20;
+                }
+                return 30;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+        
     }
 }

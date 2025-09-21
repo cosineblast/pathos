@@ -3,7 +3,7 @@ source: src/generation.rs
 expression: ir
 ---
 segments:
-  0:
+  1:
     - Declare:
         - - $lit
           - 0

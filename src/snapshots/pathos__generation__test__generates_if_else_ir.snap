@@ -1,0 +1,47 @@
+---
+source: src/generation.rs
+expression: ir
+---
+segments:
+  1:
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 1
+    - Declare:
+        - - a
+          - 0
+        - AnotherValue:
+            - $lit
+            - 0
+    - ConditionalJump:
+        - - a
+          - 0
+        - 2
+        - 3
+  2:
+    - Declare:
+        - - $lit
+          - 1
+        - Literal: 10
+    - Return:
+        - $lit
+        - 1
+    - InconditionalJump: 4
+  3:
+    - Declare:
+        - - $lit
+          - 2
+        - Literal: 20
+    - Return:
+        - $lit
+        - 2
+    - InconditionalJump: 4
+  4:
+    - Declare:
+        - - $lit
+          - 3
+        - Literal: 30
+    - Return:
+        - $lit
+        - 3
