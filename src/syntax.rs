@@ -199,7 +199,7 @@ fn get_core_expression(expr: Pair<Rule>) -> Expression {
         }
 
         Rule::name => {
-            let r = expr.as_str().to_string();
+            let r = expr.as_str().trim().to_string();
             Expression::Name(r)
         }
 
