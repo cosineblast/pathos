@@ -295,7 +295,6 @@ impl NameAnalysisState {
     }
 }
 
-
 pub struct BindingStack<T> {
     all_values: HashMap<String, Vec<T>>,
     past_frames: Vec<Vec<String>>,
@@ -332,9 +331,11 @@ impl<T> BindingStack<T> {
     }
 
     pub fn binding_of_mut(&mut self, name: &str) -> Option<&mut T> {
-        self.all_values
-            .get_mut(name)
-            .map(|stack| stack.last_mut().expect("no type associated with name in map"))
+        self.all_values.get_mut(name).map(|stack| {
+            stack
+                .last_mut()
+                .expect("no type associated with name in map")
+        })
     }
 
     pub fn end_frame(&mut self) {

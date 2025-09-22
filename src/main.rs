@@ -1,12 +1,11 @@
-
 #[allow(dead_code)]
 mod analysis;
 #[allow(dead_code)]
 mod generation;
 #[allow(dead_code)]
-mod syntax;
-#[allow(dead_code)]
 mod interpreter;
+#[allow(dead_code)]
+mod syntax;
 
 #[cfg(test)]
 mod tests;

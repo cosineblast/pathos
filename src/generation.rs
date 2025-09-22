@@ -1,4 +1,3 @@
-
 use std::collections::{BTreeMap, HashMap};
 
 use serde::{Serialize, Serializer};
@@ -14,7 +13,7 @@ pub enum IRInstruction {
     Declare(IRValueId, IRExpression),
     ConditionalJump(IRValueId, IRSegmentId, IRSegmentId),
     InconditionalJump(IRSegmentId),
-    Return(IRValueId)
+    Return(IRValueId),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -26,13 +25,12 @@ pub enum IRExpression {
     Mul(IRValueId, IRValueId),
     Div(IRValueId, IRValueId),
     Deref { array: IRValueId, index: IRValueId },
-    Call { name: String, args: Vec<IRValueId> }
+    Call { name: String, args: Vec<IRValueId> },
 }
 
 pub type IRValueId = (String, u64);
 
-
-#[derive(Debug,PartialEq, Eq,Clone, Copy, Hash, Serialize, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, PartialOrd, Ord)]
 pub struct IRSegmentId(u64);
 
 impl IRSegmentId {
@@ -51,7 +49,6 @@ pub struct IRProcedure {
     pub segments: HashMap<IRSegmentId, IRSegment>,
     pub root_segment_id: IRSegmentId,
 }
-
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(
     value: &HashMap<K, V>,
@@ -72,41 +69,42 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> IRProcedure {
         values_types: HashMap::new(),
         target_segment: vec![],
         bindings: analysis::BindingStack::new(),
-        segments: HashMap::new()
+        segments: HashMap::new(),
     };
 
     let (start, _) = state.codegen_block(&procedure.body);
 
     let segments = state.segments;
-    
-    return IRProcedure { segments, root_segment_id: start }
+
+    return IRProcedure {
+        segments,
+        root_segment_id: start,
+    };
 }
 
 struct IRGenerationState {
     counters: HashMap<String, u64>,
     current_segment_id: IRSegmentId,
     next_segment_id: IRSegmentId,
- 
+
     values_types: HashMap<IRValueId, RuntimeValueType>,
     target_segment: Vec<IRInstruction>,
     bindings: analysis::BindingStack<IRValueId>,
-    segments: HashMap<IRSegmentId, IRSegment>
+    segments: HashMap<IRSegmentId, IRSegment>,
 }
 
 impl IRGenerationState {
-
-// TODO:
-// Load arguments into variables
+    // TODO:
+    // Load arguments into variables
     fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId) {
-
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
 
         let next = self.next_segment_id;
         self.next_segment_id = self.next_segment_id.inc();
-        
+
         self.bindings.new_frame();
-        
+
         for statement in block.0.iter() {
             self.codegen_statement(statement)
         }
@@ -118,68 +116,76 @@ impl IRGenerationState {
 
         self.segments.insert(end, IRSegment(end_segment));
 
-        return (next, end)
+        return (next, end);
     }
 
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
-
         match statement {
             syntax::Statement::Return(expression) => {
                 let value = self.codegen_expression(expression);
-                
-                self.target_segment.push(
-                    IRInstruction::Return(value)
-                )
-            },
-            syntax::Statement::If(condition, then_block, else_block) => {
 
+                self.target_segment.push(IRInstruction::Return(value))
+            }
+            syntax::Statement::If(condition, then_block, else_block) => {
                 let condition_value = self.codegen_expression(condition);
 
                 if let Some(else_block) = else_block {
                     let (then_start, then_end) = self.codegen_block(&then_block);
                     let (else_start, else_end) = self.codegen_block(&else_block);
 
-                    self.target_segment.push(
-                        IRInstruction::ConditionalJump(condition_value, then_start, else_start)
-                    );
+                    self.target_segment.push(IRInstruction::ConditionalJump(
+                        condition_value,
+                        then_start,
+                        else_start,
+                    ));
 
-                    let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+                    let current =
+                        std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
                     let target = std::mem::replace(&mut self.target_segment, vec![]);
 
                     self.segments.insert(current, IRSegment(target));
 
-                    // self.current_segment_id is now the final segment 
-                    
-                    self.segments.get_mut(&then_end).unwrap().0.push(
-                        IRInstruction::InconditionalJump(self.current_segment_id)
-                    );
+                    // self.current_segment_id is now the final segment
 
-                    self.segments.get_mut(&else_end).unwrap().0.push(
-                        IRInstruction::InconditionalJump(self.current_segment_id)
-                    );
+                    self.segments
+                        .get_mut(&then_end)
+                        .unwrap()
+                        .0
+                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
+
+                    self.segments
+                        .get_mut(&else_end)
+                        .unwrap()
+                        .0
+                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
                 } else {
                     let (then_start, then_end) = self.codegen_block(&then_block);
 
-                    self.target_segment.push(
-                        IRInstruction::ConditionalJump(condition_value, then_start, self.next_segment_id)
-                    );
+                    self.target_segment.push(IRInstruction::ConditionalJump(
+                        condition_value,
+                        then_start,
+                        self.next_segment_id,
+                    ));
 
-                    let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+                    let current =
+                        std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
                     let target = std::mem::replace(&mut self.target_segment, vec![]);
 
                     self.segments.insert(current, IRSegment(target));
 
-                    self.segments.get_mut(&then_end).unwrap().0.push(
-                        IRInstruction::InconditionalJump(self.current_segment_id)
-                    );
+                    self.segments
+                        .get_mut(&then_end)
+                        .unwrap()
+                        .0
+                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
                 }
-            },
+            }
             syntax::Statement::While(_expression, _block) => todo!(),
             syntax::Statement::Assignment(target, expression) => {
                 let name = match target {
                     syntax::Expression::Name(name) => name,
                     syntax::Expression::Lookup(_, _) => todo!(),
-                    _ => todo!()
+                    _ => todo!(),
                 };
 
                 let expr_value = self.codegen_expression(expression);
@@ -189,11 +195,11 @@ impl IRGenerationState {
                 let bound_value = self.bindings.binding_of_mut(name).unwrap();
                 *bound_value = new_value.clone();
 
-                self.target_segment.push(
-                    IRInstruction::Declare(new_value, IRExpression::AnotherValue(expr_value))
-                );
-                
-            },
+                self.target_segment.push(IRInstruction::Declare(
+                    new_value,
+                    IRExpression::AnotherValue(expr_value),
+                ));
+            }
             syntax::Statement::Declaration(_syntax_type, name, expression) => {
                 let expr_value = self.codegen_expression(expression);
 
@@ -201,49 +207,53 @@ impl IRGenerationState {
 
                 self.bindings.push_binding(name.as_str(), new_value.clone());
 
-                self.target_segment.push(
-                    IRInstruction::Declare(new_value, IRExpression::AnotherValue(expr_value))
-                );
-            },
+                self.target_segment.push(IRInstruction::Declare(
+                    new_value,
+                    IRExpression::AnotherValue(expr_value),
+                ));
+            }
         }
     }
 
     fn codegen_expression(&mut self, expression: &syntax::Expression) -> IRValueId {
-        
         match expression {
             syntax::Expression::Literal(value) => {
                 let id = self.new_value("$lit");
 
-                self.target_segment.push(
-                    IRInstruction::Declare(id.clone(), IRExpression::Literal(*value))
-                );
+                self.target_segment.push(IRInstruction::Declare(
+                    id.clone(),
+                    IRExpression::Literal(*value),
+                ));
 
                 id
-            },
-            syntax::Expression::Name(name) => {
-                self.bindings.binding_of(&name).unwrap().clone()
-            },
+            }
+            syntax::Expression::Name(name) => self.bindings.binding_of(&name).unwrap().clone(),
             syntax::Expression::Call(procedure, args) => {
                 let id = self.new_value("$call");
 
-                let args = args.iter().map(|expr| self.codegen_expression(expr)).collect();
+                let args = args
+                    .iter()
+                    .map(|expr| self.codegen_expression(expr))
+                    .collect();
 
-                self.target_segment.push(
-                    IRInstruction::Declare(id.clone(), IRExpression::Call {
-                         name: procedure.clone(),
-                         args 
-                    })
-                );
+                self.target_segment.push(IRInstruction::Declare(
+                    id.clone(),
+                    IRExpression::Call {
+                        name: procedure.clone(),
+                        args,
+                    },
+                ));
 
                 id
-            },
+            }
             syntax::Expression::Lookup(array_name, index_expression) => {
                 let id = self.new_value("$lookup");
                 let array_id = self.bindings.binding_of(array_name).unwrap().clone();
                 let index_id = self.codegen_expression(&index_expression);
 
-                self.target_segment.push(
-                    IRInstruction::Declare(id.clone(), IRExpression::Deref{
+                self.target_segment.push(IRInstruction::Declare(
+                    id.clone(),
+                    IRExpression::Deref {
                         array: array_id,
                         index: index_id,
                     },
@@ -286,18 +296,19 @@ impl IRGenerationState {
     }
 
     fn new_value(&mut self, base: &str) -> IRValueId {
-        let counter = self.counters.entry(base.to_string())
+        let counter = self
+            .counters
+            .entry(base.to_string())
             .and_modify(|it| *it += 1)
             .or_insert_with(|| 0);
 
-        return (base.into(), *counter)
+        return (base.into(), *counter);
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::codegen_procedure;
-
 
     #[test]
     fn generates_sum_ir() {
@@ -366,7 +377,6 @@ mod test {
         insta::assert_yaml_snapshot!(ir);
     }
 
-    
     #[test]
     fn generates_if_else_ir() {
         let source = r#"
@@ -386,6 +396,5 @@ mod test {
         let ir = codegen_procedure(&procedure);
 
         insta::assert_yaml_snapshot!(ir);
-        
     }
 }
