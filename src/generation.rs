@@ -9,15 +9,6 @@ type RuntimeValueType = analysis::ValueType;
 
 struct IRModule(Vec<IRProcedure>);
 
-pub struct IRProcedure {
-    name: String,
-    parameters: Vec<(String, RuntimeValueType)>,
-    segments: HashMap<IRSegmentId, IRSegment>,
-    body_segment_id: IRSegmentId,
-}
-
-
-
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum IRInstruction {
     Declare(IRValueId, IRExpression),
@@ -55,7 +46,7 @@ pub struct IRSegment(Vec<IRInstruction>);
 
 // root segment is necessarily zero
 #[derive(Serialize)]
-pub struct ProcedureIR {
+pub struct IRProcedure {
     #[serde(serialize_with = "ordered_map")]
     segments: HashMap<IRSegmentId, IRSegment>,
 }
@@ -72,7 +63,7 @@ where
     ordered.serialize(serializer)
 }
 
-pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
+pub fn codegen_procedure(procedure: &syntax::Procedure) -> IRProcedure {
     let mut state = IRGenerationState {
         counters: HashMap::new(),
         current_segment_id: IRSegmentId(0),
@@ -87,7 +78,7 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
 
     let segments = state.segments;
     
-    return ProcedureIR { segments }
+    return IRProcedure { segments }
 }
 
 struct IRGenerationState {
