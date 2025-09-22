@@ -12,8 +12,8 @@ struct IRModule(Vec<IRProcedure>);
 pub struct IRProcedure {
     name: String,
     parameters: Vec<(String, RuntimeValueType)>,
-    segments: HashMap<u64, IRSegment>,
-    body_segment_id: u64,
+    segments: HashMap<IRSegmentId, IRSegment>,
+    body_segment_id: IRSegmentId,
 }
 
 
@@ -41,8 +41,14 @@ pub enum IRExpression {
 pub type IRValueId = (String, u64);
 
 
-#[derive(Debug,PartialEq, Eq,Clone, Copy, Hash, Serialize)]
+#[derive(Debug,PartialEq, Eq,Clone, Copy, Hash, Serialize, PartialOrd, Ord)]
 pub struct IRSegmentId(u64);
+
+impl IRSegmentId {
+    fn inc(self) -> Self {
+        IRSegmentId(self.0 + 1)
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IRSegment(Vec<IRInstruction>);
@@ -51,7 +57,7 @@ pub struct IRSegment(Vec<IRInstruction>);
 #[derive(Serialize)]
 pub struct ProcedureIR {
     #[serde(serialize_with = "ordered_map")]
-    segments: HashMap<u64, IRSegment>,
+    segments: HashMap<IRSegmentId, IRSegment>,
 }
 
 
@@ -69,8 +75,8 @@ where
 pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
     let mut state = IRGenerationState {
         counters: HashMap::new(),
-        current_segment_id: 0,
-        next_segment_id: 1,
+        current_segment_id: IRSegmentId(0),
+        next_segment_id: IRSegmentId(1),
         values_types: HashMap::new(),
         target_segment: vec![],
         bindings: analysis::BindingStack::new(),
@@ -86,13 +92,13 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> ProcedureIR {
 
 struct IRGenerationState {
     counters: HashMap<String, u64>,
-    current_segment_id: u64,
-    next_segment_id: u64,
+    current_segment_id: IRSegmentId,
+    next_segment_id: IRSegmentId,
  
     values_types: HashMap<IRValueId, RuntimeValueType>,
     target_segment: Vec<IRInstruction>,
     bindings: analysis::BindingStack<IRValueId>,
-    segments: HashMap<u64, IRSegment>
+    segments: HashMap<IRSegmentId, IRSegment>
 }
 
 impl IRGenerationState {
@@ -103,7 +109,7 @@ impl IRGenerationState {
         let target = std::mem::replace(&mut self.target_segment, vec![]);
 
         let next = self.next_segment_id;
-        self.next_segment_id += 1;
+        self.next_segment_id = self.next_segment_id.inc();
         
         self.bindings.new_frame();
         
@@ -118,7 +124,7 @@ impl IRGenerationState {
 
         self.segments.insert(end, IRSegment(end_segment));
 
-        return (IRSegmentId(next), IRSegmentId(end))
+        return (next, end)
     }
 
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
@@ -150,18 +156,18 @@ impl IRGenerationState {
 
                     // self.current_segment_id is now the final segment 
                     
-                    self.segments.get_mut(&then_end.0).unwrap().0.push(
-                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    self.segments.get_mut(&then_end).unwrap().0.push(
+                        IRInstruction::InconditionalJump(self.current_segment_id)
                     );
 
-                    self.segments.get_mut(&else_end.0).unwrap().0.push(
-                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    self.segments.get_mut(&else_end).unwrap().0.push(
+                        IRInstruction::InconditionalJump(self.current_segment_id)
                     );
                 } else {
                     let (then_start, then_end) = self.codegen_block(&then_block);
 
                     self.target_segment.push(
-                        IRInstruction::ConditionalJump(condition_value, then_start, IRSegmentId(self.next_segment_id))
+                        IRInstruction::ConditionalJump(condition_value, then_start, self.next_segment_id)
                     );
 
                     let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
@@ -169,8 +175,8 @@ impl IRGenerationState {
 
                     self.segments.insert(current, IRSegment(target));
 
-                    self.segments.get_mut(&then_end.0).unwrap().0.push(
-                        IRInstruction::InconditionalJump(IRSegmentId(self.current_segment_id))
+                    self.segments.get_mut(&then_end).unwrap().0.push(
+                        IRInstruction::InconditionalJump(self.current_segment_id)
                     );
                 }
             },
