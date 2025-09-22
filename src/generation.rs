@@ -49,6 +49,7 @@ pub struct IRSegment(Vec<IRInstruction>);
 pub struct IRProcedure {
     #[serde(serialize_with = "ordered_map")]
     segments: HashMap<IRSegmentId, IRSegment>,
+    root_segment_id: IRSegmentId,
 }
 
 
@@ -74,11 +75,11 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> IRProcedure {
         segments: HashMap::new()
     };
 
-    let _ = state.codegen_block(&procedure.body);
+    let (start, _) = state.codegen_block(&procedure.body);
 
     let segments = state.segments;
     
-    return IRProcedure { segments }
+    return IRProcedure { segments, root_segment_id: start }
 }
 
 struct IRGenerationState {
@@ -94,6 +95,8 @@ struct IRGenerationState {
 
 impl IRGenerationState {
 
+// TODO:
+// Load arguments into variables
     fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId) {
 
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
