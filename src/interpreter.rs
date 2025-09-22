@@ -240,4 +240,22 @@ mod test {
 
         assert_matches!(result, RuntimeValue::Int(20));
     }
+
+ #[test]
+    fn computes_reassignment() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                a = a + 1;
+                int b = a;
+                b = b + a;
+                int c = b + a;
+                return c + b;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(10));
+    }
 }

@@ -397,4 +397,23 @@ mod test {
 
         insta::assert_yaml_snapshot!(ir);
     }
+
+    #[test]
+    fn generates_reassignment_ir() {
+        let source = r#"
+            int foo() {
+                int a = 1;
+                a = a + 1;
+                int b = a;
+                b = b + 1;
+                return b;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
 }
