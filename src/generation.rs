@@ -132,6 +132,131 @@ impl IRGenerationState {
         return (next, end, new_modifications);
     }
 
+    fn codegen_if_else(
+        &mut self,
+        condition_value: IRValueId,
+        then_block: &syntax::Block,
+        else_block: &syntax::Block,
+    ) {
+        let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
+        let (else_start, else_end, else_modified) = self.codegen_block(&else_block);
+
+        self.target_segment.push(IRInstruction::ConditionalJump(
+            condition_value,
+            then_start,
+            else_start,
+        ));
+
+        let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+        let target = std::mem::replace(&mut self.target_segment, vec![]);
+        self.segments.insert(current, IRSegment(target));
+
+        // self.current_segment_id is now the final segment, so
+        // we link the new segments to this one.
+        self.link_segments_to_current(&[then_end, else_end]);
+
+        // now we insert the phi transictions
+        self.codegen_two_branch_then_phi(&then_modified, &else_modified);
+        self.codegen_two_branch_else_phi(&then_modified, &else_modified);
+    }
+
+    fn link_segments_to_current(&mut self, ids: &[IRSegmentId]) {
+        for id in ids {
+            self.segments
+                .get_mut(id)
+                .unwrap()
+                .0
+                .push(IRInstruction::InconditionalJump(self.current_segment_id));
+        }
+    }
+
+    fn codegen_two_branch_then_phi(
+        &mut self,
+        then_modified: &BTreeMap<String, IRValueId>,
+        else_modified: &BTreeMap<String, IRValueId>,
+    ) {
+        for (name, then_value) in then_modified.iter() {
+            let else_value = if else_modified.contains_key(name) {
+                else_modified.get(name).unwrap()
+            } else {
+                self.bindings.binding_of(name).unwrap()
+            }
+            .clone();
+
+            let new_value = self.new_value(name);
+
+            self.bindings.push_binding(name, new_value.clone());
+
+            self.target_segment.push(IRInstruction::Declare(
+                new_value.clone(),
+                IRExpression::Phi(then_value.clone(), else_value.clone()),
+            ));
+
+            if !self.new_variables.contains(name) {
+                self.modifications.insert(name.clone(), new_value);
+            }
+        }
+    }
+
+    fn codegen_two_branch_else_phi(
+        &mut self,
+        then_modified: &BTreeMap<String, IRValueId>,
+        else_modified: &BTreeMap<String, IRValueId>,
+    ) {
+        for (name, else_value) in else_modified.iter() {
+            if !then_modified.contains_key(name) {
+                let old_value = self.bindings.binding_of(name).unwrap().clone();
+
+                let new_value = self.new_value(name);
+
+                self.bindings.push_binding(name, new_value.clone());
+
+                self.target_segment.push(IRInstruction::Declare(
+                    new_value.clone(),
+                    IRExpression::Phi(old_value.clone(), else_value.clone()),
+                ));
+
+                if !self.new_variables.contains(name) {
+                    self.modifications.insert(name.clone(), new_value);
+                }
+            }
+        }
+    }
+
+    fn codegen_if(&mut self, condition_value: IRValueId, then_block: &syntax::Block) {
+        let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
+
+        self.target_segment.push(IRInstruction::ConditionalJump(
+            condition_value,
+            then_start,
+            self.next_segment_id,
+        ));
+
+        let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
+        let target = std::mem::replace(&mut self.target_segment, vec![]);
+        self.segments.insert(current, IRSegment(target));
+
+        self.link_segments_to_current(&[then_end]);
+
+        // now, the phi transitions
+        self.codegen_two_branch_then_phi(&then_modified, &BTreeMap::new());
+    }
+
+    fn codegen_conditional(
+        &mut self,
+        condition: &syntax::Expression,
+        then_block: &syntax::Block,
+        else_block: &Option<Box<syntax::Block>>,
+    ) {
+        let condition_value = self.codegen_expression(condition, None);
+
+        if let Some(else_block) = else_block {
+            self.codegen_if_else(condition_value, then_block, else_block);
+        } else {
+            self.codegen_if(condition_value, then_block);
+        }
+    }
+
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
         match statement {
             syntax::Statement::Return(expression) => {
@@ -140,121 +265,7 @@ impl IRGenerationState {
                 self.target_segment.push(IRInstruction::Return(value))
             }
             syntax::Statement::If(condition, then_block, else_block) => {
-                // TODO: move this to another function
-                let condition_value = self.codegen_expression(condition, None);
-
-                if let Some(else_block) = else_block {
-                    let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
-                    let (else_start, else_end, else_modified) = self.codegen_block(&else_block);
-
-                    self.target_segment.push(IRInstruction::ConditionalJump(
-                        condition_value,
-                        then_start,
-                        else_start,
-                    ));
-
-                    let current =
-                        std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
-                    let target = std::mem::replace(&mut self.target_segment, vec![]);
-
-                    self.segments.insert(current, IRSegment(target));
-
-                    // self.current_segment_id is now the final segment
-
-                    self.segments
-                        .get_mut(&then_end)
-                        .unwrap()
-                        .0
-                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
-
-                    self.segments
-                        .get_mut(&else_end)
-                        .unwrap()
-                        .0
-                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
-
-                    // now we insert the phi transictions
-
-                    for (name, then_value) in then_modified.iter() {
-                        let else_value = if else_modified.contains_key(name) {
-                            else_modified.get(name).unwrap()
-                        } else {
-                            self.bindings.binding_of(name).unwrap()
-                        }
-                        .clone();
-
-                        let new_value = self.new_value(name);
-
-                        self.bindings.push_binding(name, new_value.clone());
-
-                        self.target_segment.push(IRInstruction::Declare(
-                            new_value.clone(),
-                            IRExpression::Phi(then_value.clone(), else_value.clone()),
-                        ));
-
-                        if !self.new_variables.contains(name) {
-                            self.modifications.insert(name.clone(), new_value);
-                        }
-                    }
-
-                    for (name, else_value) in else_modified.iter() {
-                        if !then_modified.contains_key(name) {
-                            let old_value = self.bindings.binding_of(name).unwrap().clone();
-
-                            let new_value = self.new_value(name);
-
-                            self.bindings.push_binding(name, new_value.clone());
-
-                            self.target_segment.push(IRInstruction::Declare(
-                                new_value.clone(),
-                                IRExpression::Phi(old_value.clone(), else_value.clone()),
-                            ));
-
-                            if !self.new_variables.contains(name) {
-                                self.modifications.insert(name.clone(), new_value);
-                            }
-                        }
-                    }
-                } else {
-                    let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
-
-                    self.target_segment.push(IRInstruction::ConditionalJump(
-                        condition_value,
-                        then_start,
-                        self.next_segment_id,
-                    ));
-
-                    let current =
-                        std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
-                    let target = std::mem::replace(&mut self.target_segment, vec![]);
-
-                    self.segments.insert(current, IRSegment(target));
-
-                    self.segments
-                        .get_mut(&then_end)
-                        .unwrap()
-                        .0
-                        .push(IRInstruction::InconditionalJump(self.current_segment_id));
-
-                    // now, the phi transitions
-
-                    for (name, then_value) in then_modified.iter() {
-                        let old_value = self.bindings.binding_of(name).unwrap().clone();
-
-                        let new_value = self.new_value(name);
-
-                        self.bindings.push_binding(name, new_value.clone());
-
-                        self.target_segment.push(IRInstruction::Declare(
-                            new_value.clone(),
-                            IRExpression::Phi(then_value.clone(), old_value.clone()),
-                        ));
-
-                        if !self.new_variables.contains(name) {
-                            self.modifications.insert(name.clone(), new_value);
-                        }
-                    }
-                }
+                self.codegen_conditional(condition, then_block, else_block)
             }
             syntax::Statement::While(_expression, _block) => todo!(),
             syntax::Statement::Assignment(target, expression) => {
