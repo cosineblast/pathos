@@ -15,6 +15,7 @@ enum RuntimeValue {
 
 struct RuntimeState {
     vars: HashMap<IRValueId, RuntimeValue>,
+    last_if_was_then: bool
 }
 
 impl RuntimeState {
@@ -42,6 +43,13 @@ impl RuntimeState {
             IRExpr::Div(left, right) => RV::Int(get_int(&left) / get_int(&right)),
             IRExpr::Deref { .. } => todo!(),
             IRExpr::Call { .. } => todo!(),
+            IRExpr::Phi(then_value, else_value) => {
+                let value = if self.last_if_was_then {
+                    then_value
+                } else { else_value };
+
+                self.vars.get(&value).unwrap().clone()
+            },
         }
     }
 }
@@ -56,7 +64,7 @@ fn run_ir(procedure: IRProcedure, arguments: &[RuntimeValue]) -> RuntimeValue {
 
     let vars = HashMap::<IRValueId, RuntimeValue>::new();
 
-    let mut state = RuntimeState { vars };
+    let mut state = RuntimeState { vars, last_if_was_then: false };
 
     loop {
         let instruction = segment.0[instruction_index].clone();
@@ -76,8 +84,10 @@ fn run_ir(procedure: IRProcedure, arguments: &[RuntimeValue]) -> RuntimeValue {
                 let else_segment = procedure.segments.get(&else_segment).unwrap();
 
                 if condition != 0 {
+                    state.last_if_was_then = true;
                     segment = then_segment;
                 } else {
+                    state.last_if_was_then = false;
                     segment = else_segment;
                 }
 
@@ -241,7 +251,7 @@ mod test {
         assert_matches!(result, RuntimeValue::Int(20));
     }
 
- #[test]
+    #[test]
     fn computes_reassignment() {
         let result = eval(
             r#"
@@ -257,5 +267,149 @@ mod test {
         );
 
         assert_matches!(result, RuntimeValue::Int(10));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_both_if_else_modify_variable_and_branch_is_then() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (1) {
+                    a = 10;
+                } else {
+                    a = 20;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(10));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_both_if_else_modify_variable_and_branch_is_else() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (0) {
+                    a = 10;
+                } else {
+                    a = 20;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(20));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_only_then_modifies_variable_and_branch_is_then() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (1) {
+                    a = 10;
+                } else {
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(10));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_only_then_modifies_variable_and_branch_is_else() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (0) {
+                    a = 10;
+                } else {
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(1));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_only_else_modifies_variable_and_branch_is_then() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (1) {
+                } else {
+                    a = 20;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(1));
+    }
+
+    #[test]
+    fn computes_if_else_reassignment_when_only_else_modifies_variable_and_branch_is_else() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (0) {
+                } else {
+                    a = 20;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(20));
+    }
+
+    #[test]
+    fn computes_if_reassignment_when_branch_is_then() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (1) {
+                    a = 10;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(10));
+    }
+
+    #[test]
+    fn computes_if_reassignment_when_branch_is_else() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                if (0) {
+                    a = 10;
+                }
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(1));
     }
 }

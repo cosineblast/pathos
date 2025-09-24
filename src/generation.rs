@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Serialize, Serializer};
 
@@ -26,6 +26,7 @@ pub enum IRExpression {
     Div(IRValueId, IRValueId),
     Deref { array: IRValueId, index: IRValueId },
     Call { name: String, args: Vec<IRValueId> },
+    Phi(IRValueId, IRValueId)
 }
 
 pub type IRValueId = (String, u64);
@@ -70,9 +71,11 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> IRProcedure {
         target_segment: vec![],
         bindings: analysis::BindingStack::new(),
         segments: HashMap::new(),
+        modifications: BTreeMap::new(),
+        new_variables: HashSet::new()
     };
 
-    let (start, _) = state.codegen_block(&procedure.body);
+    let (start, _, _) = state.codegen_block(&procedure.body);
 
     let segments = state.segments;
 
@@ -91,14 +94,20 @@ struct IRGenerationState {
     target_segment: Vec<IRInstruction>,
     bindings: analysis::BindingStack<IRValueId>,
     segments: HashMap<IRSegmentId, IRSegment>,
+
+    new_variables: HashSet<String>,
+    modifications: BTreeMap<String, IRValueId>
+
 }
 
 impl IRGenerationState {
     // TODO:
     // Load arguments into variables
-    fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId) {
+    fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId, BTreeMap<String, IRValueId>) {
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
+        let vars = std::mem::replace(&mut self.new_variables, HashSet::new());
+        let modifications = std::mem::replace(&mut self.modifications, BTreeMap::new());
 
         let next = self.next_segment_id;
         self.next_segment_id = self.next_segment_id.inc();
@@ -113,10 +122,12 @@ impl IRGenerationState {
 
         let end = std::mem::replace(&mut self.current_segment_id, current);
         let end_segment = std::mem::replace(&mut self.target_segment, target);
+        let new_modifications = std::mem::replace(&mut self.modifications, modifications);
+        self.new_variables = vars;
 
         self.segments.insert(end, IRSegment(end_segment));
 
-        return (next, end);
+        return (next, end, new_modifications);
     }
 
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
@@ -127,11 +138,12 @@ impl IRGenerationState {
                 self.target_segment.push(IRInstruction::Return(value))
             }
             syntax::Statement::If(condition, then_block, else_block) => {
+                // TODO: move this to another function
                 let condition_value = self.codegen_expression(condition, None);
 
                 if let Some(else_block) = else_block {
-                    let (then_start, then_end) = self.codegen_block(&then_block);
-                    let (else_start, else_end) = self.codegen_block(&else_block);
+                    let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
+                    let (else_start, else_end, else_modified) = self.codegen_block(&else_block);
 
                     self.target_segment.push(IRInstruction::ConditionalJump(
                         condition_value,
@@ -158,8 +170,52 @@ impl IRGenerationState {
                         .unwrap()
                         .0
                         .push(IRInstruction::InconditionalJump(self.current_segment_id));
+
+                    // now we insert the phi transictions
+
+                    for (name, then_value) in then_modified.iter() {
+                          let else_value = if else_modified.contains_key(name) {
+                              else_modified.get(name).unwrap()
+                          } else {
+                              self.bindings.binding_of(name).unwrap()
+                          }.clone();
+
+                          let new_value = self.new_value(name);
+
+                          self.bindings.push_binding(name, new_value.clone());
+
+                          self.target_segment.push(IRInstruction::Declare(
+                              new_value.clone(),
+                              IRExpression::Phi(then_value.clone(), else_value.clone()),
+                          ));
+
+                      if !self.new_variables.contains(name)  {
+                          self.modifications.insert(name.clone(), new_value);
+                      }
+                      
+                    } 
+
+
+                    for (name, else_value) in else_modified.iter() {
+                      if  !then_modified.contains_key(name) {
+                          let old_value = self.bindings.binding_of(name).unwrap().clone();
+                          
+                          let new_value = self.new_value(name);
+
+                          self.bindings.push_binding(name, new_value.clone());
+
+                          self.target_segment.push(IRInstruction::Declare(
+                              new_value.clone(),
+                              IRExpression::Phi(old_value.clone(), else_value.clone()),
+                          ));
+
+                      if !self.new_variables.contains(name)  {
+                          self.modifications.insert(name.clone(), new_value);
+                      }
+                      }
+                    } 
                 } else {
-                    let (then_start, then_end) = self.codegen_block(&then_block);
+                    let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
 
                     self.target_segment.push(IRInstruction::ConditionalJump(
                         condition_value,
@@ -178,6 +234,28 @@ impl IRGenerationState {
                         .unwrap()
                         .0
                         .push(IRInstruction::InconditionalJump(self.current_segment_id));
+
+                    // now, the phi transitions
+
+                    for (name, then_value) in then_modified.iter() {
+                      
+                          let old_value = self.bindings.binding_of(name).unwrap().clone();
+                          
+                          let new_value = self.new_value(name);
+
+                          self.bindings.push_binding(name, new_value.clone());
+
+                          self.target_segment.push(IRInstruction::Declare(
+                              new_value.clone(),
+                              IRExpression::Phi(then_value.clone(), old_value.clone()),
+                          ));
+
+                        if !self.new_variables.contains(name) {
+                          self.modifications.insert(name.clone(), new_value);
+                        }
+                        
+                        
+                    }
                 }
             }
             syntax::Statement::While(_expression, _block) => todo!(),
@@ -194,8 +272,11 @@ impl IRGenerationState {
 
                 assert_eq!(expr_value, new_value);
 
-                let bound_value = self.bindings.binding_of_mut(name).unwrap();
-                *bound_value = new_value.clone();
+                self.bindings.push_binding(name, new_value);
+
+                if !self.new_variables.contains(name) {
+                    self.modifications.insert(name.clone(), expr_value);
+                }
             }
             syntax::Statement::Declaration(_syntax_type, name, expression) => {
                 let new_value = self.new_value(name);
@@ -205,6 +286,8 @@ impl IRGenerationState {
                 assert_eq!(expr_value, new_value);
 
                 self.bindings.push_binding(name.as_str(), new_value.clone());
+
+                self.new_variables.insert(name.clone());
             }
         }
     }
@@ -417,6 +500,31 @@ mod test {
                 int b = a;
                 b = b + 1;
                 return b;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
+
+    #[test]
+    fn generates_if_else_reassignment_ir() {
+        let source = r#"
+            int foo() {
+                int then_only = 1;
+                int else_only = 1;
+                int then_else = 1;
+                if (1) {
+                    then_only = 10;
+                    then_else = 10;
+                } else {
+                    else_only = 20;
+                    then_else = 20;
+                }
+                return 0;
             }
         "#;
 
