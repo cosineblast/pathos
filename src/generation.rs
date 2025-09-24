@@ -26,7 +26,7 @@ pub enum IRExpression {
     Div(IRValueId, IRValueId),
     Deref { array: IRValueId, index: IRValueId },
     Call { name: String, args: Vec<IRValueId> },
-    Phi(IRValueId, IRValueId)
+    Phi(IRValueId, IRValueId),
 }
 
 pub type IRValueId = (String, u64);
@@ -72,7 +72,7 @@ pub fn codegen_procedure(procedure: &syntax::Procedure) -> IRProcedure {
         bindings: analysis::BindingStack::new(),
         segments: HashMap::new(),
         modifications: BTreeMap::new(),
-        new_variables: HashSet::new()
+        new_variables: HashSet::new(),
     };
 
     let (start, _, _) = state.codegen_block(&procedure.body);
@@ -96,14 +96,16 @@ struct IRGenerationState {
     segments: HashMap<IRSegmentId, IRSegment>,
 
     new_variables: HashSet<String>,
-    modifications: BTreeMap<String, IRValueId>
-
+    modifications: BTreeMap<String, IRValueId>,
 }
 
 impl IRGenerationState {
     // TODO:
     // Load arguments into variables
-    fn codegen_block(&mut self, block: &syntax::Block) -> (IRSegmentId, IRSegmentId, BTreeMap<String, IRValueId>) {
+    fn codegen_block(
+        &mut self,
+        block: &syntax::Block,
+    ) -> (IRSegmentId, IRSegmentId, BTreeMap<String, IRValueId>) {
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
         let vars = std::mem::replace(&mut self.new_variables, HashSet::new());
@@ -174,46 +176,45 @@ impl IRGenerationState {
                     // now we insert the phi transictions
 
                     for (name, then_value) in then_modified.iter() {
-                          let else_value = if else_modified.contains_key(name) {
-                              else_modified.get(name).unwrap()
-                          } else {
-                              self.bindings.binding_of(name).unwrap()
-                          }.clone();
+                        let else_value = if else_modified.contains_key(name) {
+                            else_modified.get(name).unwrap()
+                        } else {
+                            self.bindings.binding_of(name).unwrap()
+                        }
+                        .clone();
 
-                          let new_value = self.new_value(name);
+                        let new_value = self.new_value(name);
 
-                          self.bindings.push_binding(name, new_value.clone());
+                        self.bindings.push_binding(name, new_value.clone());
 
-                          self.target_segment.push(IRInstruction::Declare(
-                              new_value.clone(),
-                              IRExpression::Phi(then_value.clone(), else_value.clone()),
-                          ));
+                        self.target_segment.push(IRInstruction::Declare(
+                            new_value.clone(),
+                            IRExpression::Phi(then_value.clone(), else_value.clone()),
+                        ));
 
-                      if !self.new_variables.contains(name)  {
-                          self.modifications.insert(name.clone(), new_value);
-                      }
-                      
-                    } 
-
+                        if !self.new_variables.contains(name) {
+                            self.modifications.insert(name.clone(), new_value);
+                        }
+                    }
 
                     for (name, else_value) in else_modified.iter() {
-                      if  !then_modified.contains_key(name) {
-                          let old_value = self.bindings.binding_of(name).unwrap().clone();
-                          
-                          let new_value = self.new_value(name);
+                        if !then_modified.contains_key(name) {
+                            let old_value = self.bindings.binding_of(name).unwrap().clone();
 
-                          self.bindings.push_binding(name, new_value.clone());
+                            let new_value = self.new_value(name);
 
-                          self.target_segment.push(IRInstruction::Declare(
-                              new_value.clone(),
-                              IRExpression::Phi(old_value.clone(), else_value.clone()),
-                          ));
+                            self.bindings.push_binding(name, new_value.clone());
 
-                      if !self.new_variables.contains(name)  {
-                          self.modifications.insert(name.clone(), new_value);
-                      }
-                      }
-                    } 
+                            self.target_segment.push(IRInstruction::Declare(
+                                new_value.clone(),
+                                IRExpression::Phi(old_value.clone(), else_value.clone()),
+                            ));
+
+                            if !self.new_variables.contains(name) {
+                                self.modifications.insert(name.clone(), new_value);
+                            }
+                        }
+                    }
                 } else {
                     let (then_start, then_end, then_modified) = self.codegen_block(&then_block);
 
@@ -238,23 +239,20 @@ impl IRGenerationState {
                     // now, the phi transitions
 
                     for (name, then_value) in then_modified.iter() {
-                      
-                          let old_value = self.bindings.binding_of(name).unwrap().clone();
-                          
-                          let new_value = self.new_value(name);
+                        let old_value = self.bindings.binding_of(name).unwrap().clone();
 
-                          self.bindings.push_binding(name, new_value.clone());
+                        let new_value = self.new_value(name);
 
-                          self.target_segment.push(IRInstruction::Declare(
-                              new_value.clone(),
-                              IRExpression::Phi(then_value.clone(), old_value.clone()),
-                          ));
+                        self.bindings.push_binding(name, new_value.clone());
+
+                        self.target_segment.push(IRInstruction::Declare(
+                            new_value.clone(),
+                            IRExpression::Phi(then_value.clone(), old_value.clone()),
+                        ));
 
                         if !self.new_variables.contains(name) {
-                          self.modifications.insert(name.clone(), new_value);
+                            self.modifications.insert(name.clone(), new_value);
                         }
-                        
-                        
                     }
                 }
             }
@@ -292,10 +290,13 @@ impl IRGenerationState {
         }
     }
 
-
     // if target is some, the compiled expression will necessarily be compiled into the target id,
     // otherwise, an arbitray name may be generated
-    fn codegen_expression(&mut self, expression: &syntax::Expression, target: Option<IRValueId>) -> IRValueId {
+    fn codegen_expression(
+        &mut self,
+        expression: &syntax::Expression,
+        target: Option<IRValueId>,
+    ) -> IRValueId {
         match expression {
             syntax::Expression::Literal(value) => {
                 let id = target.unwrap_or_else(|| self.new_value("$lit"));
@@ -308,8 +309,8 @@ impl IRGenerationState {
                 id
             }
             syntax::Expression::Name(name) => {
-                let current =  self.bindings.binding_of(&name).unwrap().clone();
-                
+                let current = self.bindings.binding_of(&name).unwrap().clone();
+
                 if let Some(target) = target {
                     self.target_segment.push(IRInstruction::Declare(
                         target.clone(),

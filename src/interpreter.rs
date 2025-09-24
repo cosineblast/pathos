@@ -15,7 +15,7 @@ enum RuntimeValue {
 
 struct RuntimeState {
     vars: HashMap<IRValueId, RuntimeValue>,
-    last_if_was_then: bool
+    last_if_was_then: bool,
 }
 
 impl RuntimeState {
@@ -46,10 +46,12 @@ impl RuntimeState {
             IRExpr::Phi(then_value, else_value) => {
                 let value = if self.last_if_was_then {
                     then_value
-                } else { else_value };
+                } else {
+                    else_value
+                };
 
                 self.vars.get(&value).unwrap().clone()
-            },
+            }
         }
     }
 }
@@ -64,7 +66,10 @@ fn run_ir(procedure: IRProcedure, arguments: &[RuntimeValue]) -> RuntimeValue {
 
     let vars = HashMap::<IRValueId, RuntimeValue>::new();
 
-    let mut state = RuntimeState { vars, last_if_was_then: false };
+    let mut state = RuntimeState {
+        vars,
+        last_if_was_then: false,
+    };
 
     loop {
         let instruction = segment.0[instruction_index].clone();
