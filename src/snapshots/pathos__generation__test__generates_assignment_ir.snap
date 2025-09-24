@@ -5,33 +5,21 @@ expression: ir
 segments:
   1:
     - Declare:
-        - - $lit
-          - 0
-        - Literal: 1
-    - Declare:
         - - a
           - 0
-        - AnotherValue:
-            - $lit
-            - 0
-    - Declare:
-        - - $lit
-          - 1
         - Literal: 1
     - Declare:
-        - - $add
+        - - $lit
+          - 0
+        - Literal: 1
+    - Declare:
+        - - b
           - 0
         - Add:
             - - a
               - 0
             - - $lit
-              - 1
-    - Declare:
-        - - b
-          - 0
-        - AnotherValue:
-            - $add
-            - 0
+              - 0
     - Return:
         - b
         - 0

@@ -5,15 +5,9 @@ expression: ir
 segments:
   1:
     - Declare:
-        - - $lit
-          - 0
-        - Literal: 1
-    - Declare:
         - - abc
           - 0
-        - AnotherValue:
-            - $lit
-            - 0
+        - Literal: 1
     - Return:
         - abc
         - 0

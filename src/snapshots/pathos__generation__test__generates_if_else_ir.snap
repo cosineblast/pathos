@@ -5,15 +5,9 @@ expression: ir
 segments:
   1:
     - Declare:
-        - - $lit
-          - 0
-        - Literal: 1
-    - Declare:
         - - a
           - 0
-        - AnotherValue:
-            - $lit
-            - 0
+        - Literal: 1
     - ConditionalJump:
         - - a
           - 0
@@ -22,27 +16,27 @@ segments:
   2:
     - Declare:
         - - $lit
-          - 1
+          - 0
         - Literal: 10
     - Return:
         - $lit
-        - 1
+        - 0
     - InconditionalJump: 4
   3:
     - Declare:
         - - $lit
-          - 2
+          - 1
         - Literal: 20
     - Return:
         - $lit
-        - 2
+        - 1
     - InconditionalJump: 4
   4:
     - Declare:
         - - $lit
-          - 3
+          - 2
         - Literal: 30
     - Return:
         - $lit
-        - 3
+        - 2
 root_segment_id: 1

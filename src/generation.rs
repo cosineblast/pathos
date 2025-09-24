@@ -122,12 +122,12 @@ impl IRGenerationState {
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
         match statement {
             syntax::Statement::Return(expression) => {
-                let value = self.codegen_expression(expression);
+                let value = self.codegen_expression(expression, None);
 
                 self.target_segment.push(IRInstruction::Return(value))
             }
             syntax::Statement::If(condition, then_block, else_block) => {
-                let condition_value = self.codegen_expression(condition);
+                let condition_value = self.codegen_expression(condition, None);
 
                 if let Some(else_block) = else_block {
                     let (then_start, then_end) = self.codegen_block(&then_block);
@@ -188,37 +188,34 @@ impl IRGenerationState {
                     _ => todo!(),
                 };
 
-                let expr_value = self.codegen_expression(expression);
-
                 let new_value = self.new_value(name);
+
+                let expr_value = self.codegen_expression(expression, Some(new_value.clone()));
+
+                assert_eq!(expr_value, new_value);
 
                 let bound_value = self.bindings.binding_of_mut(name).unwrap();
                 *bound_value = new_value.clone();
-
-                self.target_segment.push(IRInstruction::Declare(
-                    new_value,
-                    IRExpression::AnotherValue(expr_value),
-                ));
             }
             syntax::Statement::Declaration(_syntax_type, name, expression) => {
-                let expr_value = self.codegen_expression(expression);
-
                 let new_value = self.new_value(name);
 
-                self.bindings.push_binding(name.as_str(), new_value.clone());
+                let expr_value = self.codegen_expression(expression, Some(new_value.clone()));
 
-                self.target_segment.push(IRInstruction::Declare(
-                    new_value,
-                    IRExpression::AnotherValue(expr_value),
-                ));
+                assert_eq!(expr_value, new_value);
+
+                self.bindings.push_binding(name.as_str(), new_value.clone());
             }
         }
     }
 
-    fn codegen_expression(&mut self, expression: &syntax::Expression) -> IRValueId {
+
+    // if target is some, the compiled expression will necessarily be compiled into the target id,
+    // otherwise, an arbitray name may be generated
+    fn codegen_expression(&mut self, expression: &syntax::Expression, target: Option<IRValueId>) -> IRValueId {
         match expression {
             syntax::Expression::Literal(value) => {
-                let id = self.new_value("$lit");
+                let id = target.unwrap_or_else(|| self.new_value("$lit"));
 
                 self.target_segment.push(IRInstruction::Declare(
                     id.clone(),
@@ -227,13 +224,26 @@ impl IRGenerationState {
 
                 id
             }
-            syntax::Expression::Name(name) => self.bindings.binding_of(&name).unwrap().clone(),
+            syntax::Expression::Name(name) => {
+                let current =  self.bindings.binding_of(&name).unwrap().clone();
+                
+                if let Some(target) = target {
+                    self.target_segment.push(IRInstruction::Declare(
+                        target.clone(),
+                        IRExpression::AnotherValue(current),
+                    ));
+
+                    target
+                } else {
+                    current
+                }
+            }
             syntax::Expression::Call(procedure, args) => {
-                let id = self.new_value("$call");
+                let id = target.unwrap_or_else(|| self.new_value("$call"));
 
                 let args = args
                     .iter()
-                    .map(|expr| self.codegen_expression(expr))
+                    .map(|expr| self.codegen_expression(expr, None))
                     .collect();
 
                 self.target_segment.push(IRInstruction::Declare(
@@ -247,9 +257,9 @@ impl IRGenerationState {
                 id
             }
             syntax::Expression::Lookup(array_name, index_expression) => {
-                let id = self.new_value("$lookup");
+                let id = target.unwrap_or_else(|| self.new_value("$lookup"));
                 let array_id = self.bindings.binding_of(array_name).unwrap().clone();
-                let index_id = self.codegen_expression(&index_expression);
+                let index_id = self.codegen_expression(&index_expression, None);
 
                 self.target_segment.push(IRInstruction::Declare(
                     id.clone(),
@@ -262,15 +272,15 @@ impl IRGenerationState {
                 id
             }
             syntax::Expression::BinaryOperation(operation, left, right) => {
-                let left_value = self.codegen_expression(&left);
-                let right_value = self.codegen_expression(&right);
+                let left_value = self.codegen_expression(&left, None);
+                let right_value = self.codegen_expression(&right, None);
 
                 let (ir_expression, name) = Self::get_ir_expression_for_binary_operation(
                     *operation,
                     left_value,
                     right_value,
                 );
-                let id = self.new_value(name);
+                let id = target.unwrap_or_else(|| self.new_value(name));
 
                 self.target_segment
                     .push(IRInstruction::Declare(id.clone(), ir_expression));
