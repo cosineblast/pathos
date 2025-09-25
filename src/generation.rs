@@ -551,8 +551,7 @@ mod test {
 
     #[test]
     fn generates_sequential_if_else_ir() {
-        let source =
-            r#"
+        let source = r#"
             int foo() {
                 int a = 1;
                 int b = 1;

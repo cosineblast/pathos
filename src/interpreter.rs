@@ -419,7 +419,7 @@ mod test {
     }
 
     #[test]
-    fn computes_nested_reassignment() {
+    fn computes_sequential_reassignment() {
         let result = eval(
             r#"
             int foo() {
@@ -444,5 +444,35 @@ mod test {
         );
 
         assert_matches!(result, RuntimeValue::Int(21));
+    }
+
+    #[test]
+    fn computes_nested_reassignment() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                int b = 1;
+
+                if (1) {
+                    if (1) {
+                        a = 2;
+                        b = 3;
+                    } else {
+                        a = 0;
+                        b = 0;
+                    }
+                } else {
+                    b = 0;
+                    b = 0;
+                }
+                
+
+                return 10 * a +  b;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(23));
     }
 }
