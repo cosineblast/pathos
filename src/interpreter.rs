@@ -417,4 +417,32 @@ mod test {
 
         assert_matches!(result, RuntimeValue::Int(1));
     }
+
+    #[test]
+    fn computes_nested_reassignment() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                int b = 1;
+
+                if (1) {
+                    a = 2;
+                } else {
+                    a = 3;
+                }
+                
+                if (1) {
+                } else {
+                    a = 0;
+                    b = 0;
+                }
+
+                return 10 * a +  b;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(21));
+    }
 }

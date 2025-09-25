@@ -1,0 +1,106 @@
+---
+source: src/generation.rs
+expression: ir
+---
+segments:
+  1:
+    - Declare:
+        - - a
+          - 0
+        - Literal: 1
+    - Declare:
+        - - b
+          - 0
+        - Literal: 1
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 1
+    - ConditionalJump:
+        - - $lit
+          - 0
+        - 2
+        - 3
+  2:
+    - Declare:
+        - - a
+          - 1
+        - Literal: 2
+    - InconditionalJump: 4
+  3:
+    - Declare:
+        - - a
+          - 2
+        - Literal: 3
+    - InconditionalJump: 4
+  4:
+    - Declare:
+        - - a
+          - 3
+        - Phi:
+            - - a
+              - 1
+            - - a
+              - 2
+    - Declare:
+        - - $lit
+          - 1
+        - Literal: 1
+    - ConditionalJump:
+        - - $lit
+          - 1
+        - 5
+        - 6
+  5:
+    - InconditionalJump: 7
+  6:
+    - Declare:
+        - - a
+          - 4
+        - Literal: 0
+    - Declare:
+        - - b
+          - 1
+        - Literal: 0
+    - InconditionalJump: 7
+  7:
+    - Declare:
+        - - a
+          - 5
+        - Phi:
+            - - a
+              - 3
+            - - a
+              - 4
+    - Declare:
+        - - b
+          - 2
+        - Phi:
+            - - b
+              - 0
+            - - b
+              - 1
+    - Declare:
+        - - $lit
+          - 2
+        - Literal: 10
+    - Declare:
+        - - $mul
+          - 0
+        - Mul:
+            - - $lit
+              - 2
+            - - a
+              - 5
+    - Declare:
+        - - $add
+          - 0
+        - Add:
+            - - $mul
+              - 0
+            - - b
+              - 2
+    - Return:
+        - $add
+        - 0
+root_segment_id: 1

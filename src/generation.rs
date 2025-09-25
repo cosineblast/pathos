@@ -149,6 +149,7 @@ impl IRGenerationState {
 
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
+        self.next_segment_id = self.next_segment_id.inc();
         self.segments.insert(current, IRSegment(target));
 
         // self.current_segment_id is now the final segment, so
@@ -234,6 +235,7 @@ impl IRGenerationState {
 
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
+        self.next_segment_id = self.next_segment_id.inc();
         self.segments.insert(current, IRSegment(target));
 
         self.link_segments_to_current(&[then_end]);
@@ -537,6 +539,37 @@ mod test {
                     then_else = 20;
                 }
                 return 0;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
+
+    #[test]
+    fn generates_sequential_if_else_ir() {
+        let source =
+            r#"
+            int foo() {
+                int a = 1;
+                int b = 1;
+
+                if (1) {
+                    a = 2;
+                } else {
+                    a = 3;
+                }
+                
+                if (1) {
+                } else {
+                    a = 0;
+                    b = 0;
+                }
+
+                return 10 * a +  b;
             }
         "#;
 
