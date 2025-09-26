@@ -13,6 +13,7 @@ pub enum IRInstruction {
     Declare(IRValueId, IRExpression),
     ConditionalJump(IRValueId, IRSegmentId, IRSegmentId),
     InconditionalJump(IRSegmentId),
+    Mutate(IRValueId, IRValueId),
     Return(IRValueId),
 }
 
@@ -147,16 +148,10 @@ impl IRGenerationState {
             else_start,
         ));
 
-        let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
-        let target = std::mem::replace(&mut self.target_segment, vec![]);
-        self.next_segment_id = self.next_segment_id.inc();
-        self.segments.insert(current, IRSegment(target));
+        self.switch_to_new_segment();
 
-        // self.current_segment_id is now the final segment, so
-        // we link the new segments to this one.
         self.link_segments_to_current(&[then_end, else_end]);
 
-        // now we insert the phi transictions
         self.codegen_two_branch_then_phi(&then_modified, &else_modified);
         self.codegen_two_branch_else_phi(&then_modified, &else_modified);
     }
@@ -233,15 +228,18 @@ impl IRGenerationState {
             self.next_segment_id,
         ));
 
+        self.switch_to_new_segment();
+
+        self.link_segments_to_current(&[then_end]);
+
+        self.codegen_two_branch_then_phi(&then_modified, &BTreeMap::new());
+    }
+
+    fn switch_to_new_segment(&mut self) {
         let current = std::mem::replace(&mut self.current_segment_id, self.next_segment_id);
         let target = std::mem::replace(&mut self.target_segment, vec![]);
         self.next_segment_id = self.next_segment_id.inc();
         self.segments.insert(current, IRSegment(target));
-
-        self.link_segments_to_current(&[then_end]);
-
-        // now, the phi transitions
-        self.codegen_two_branch_then_phi(&then_modified, &BTreeMap::new());
     }
 
     fn codegen_conditional(
@@ -269,7 +267,43 @@ impl IRGenerationState {
             syntax::Statement::If(condition, then_block, else_block) => {
                 self.codegen_conditional(condition, then_block, else_block)
             }
-            syntax::Statement::While(_expression, _block) => todo!(),
+            syntax::Statement::While(condition, block) => {
+                let (body_start, body_end, body_modifed) = self.codegen_block(block);
+
+                let body_end_segment = self.segments.get_mut(&body_end).unwrap();
+
+                for (name, new_value) in body_modifed {
+                    let previous = self.bindings.binding_of(&name).unwrap();
+
+                    body_end_segment
+                        .0
+                        .push(IRInstruction::Mutate(previous.clone(), new_value.clone()));
+                }
+
+                let condition_segment_id = self.next_segment_id;
+
+                self.target_segment
+                    .push(IRInstruction::InconditionalJump(condition_segment_id));
+
+                body_end_segment
+                    .0
+                    .push(IRInstruction::InconditionalJump(condition_segment_id));
+
+                // now, the condition segment
+                self.switch_to_new_segment();
+
+                let final_segment_id = self.next_segment_id;
+
+                let condition_value = self.codegen_expression(condition, None);
+
+                self.target_segment.push(IRInstruction::ConditionalJump(
+                    condition_value,
+                    body_start,
+                    final_segment_id,
+                ));
+
+                self.switch_to_new_segment();
+            }
             syntax::Statement::Assignment(target, expression) => {
                 let name = match target {
                     syntax::Expression::Name(name) => name,
@@ -569,6 +603,29 @@ mod test {
                 }
 
                 return 10 * a +  b;
+            }
+        "#;
+
+        let procedure = crate::syntax::parse_procedure(source).unwrap();
+
+        let ir = codegen_procedure(&procedure);
+
+        insta::assert_yaml_snapshot!(ir);
+    }
+
+    #[test]
+    fn generates_while() {
+        let source = r#"
+            int foo() {
+                int a = 1;
+                int b = 10;
+
+                while (b) {
+                    a = a * 2;
+                    b = b - 1;
+                }
+
+                return a;
             }
         "#;
 

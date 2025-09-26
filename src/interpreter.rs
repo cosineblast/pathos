@@ -77,9 +77,7 @@ fn run_ir(procedure: IRProcedure, arguments: &[RuntimeValue]) -> RuntimeValue {
         match instruction {
             IRInstruction::Declare(name, expression) => {
                 let value = state.eval_ir_expression(expression);
-                if let Some(_) = state.vars.insert(name.clone(), value) {
-                    panic!("tried to re-declare an existing value at runtime");
-                }
+                if let Some(_) = state.vars.insert(name.clone(), value) {}
 
                 instruction_index += 1;
             }
@@ -106,6 +104,13 @@ fn run_ir(procedure: IRProcedure, arguments: &[RuntimeValue]) -> RuntimeValue {
             }
             IRInstruction::Return(value_id) => {
                 return state.vars.get(&value_id).unwrap().clone();
+            }
+            IRInstruction::Mutate(target_id, source_id) => {
+                let source_value = state.vars.get(&source_id).unwrap().clone();
+                let target_value = state.vars.get_mut(&target_id).unwrap();
+                *target_value = source_value;
+
+                instruction_index += 1;
             }
         }
     }
@@ -153,6 +158,19 @@ mod test {
         );
 
         assert_matches!(result, RuntimeValue::Int(15));
+    }
+
+    #[test]
+    fn computes_literal_subtraction() {
+        let result = eval(
+            r#"
+            int foo() {
+                return 3 - 5;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(-2));
     }
 
     #[test]
@@ -474,5 +492,26 @@ mod test {
         );
 
         assert_matches!(result, RuntimeValue::Int(23));
+    }
+
+    #[test]
+    fn computes_simple_while() {
+        let result = eval(
+            r#"
+            int foo() {
+                int a = 1;
+                int b = 10;
+
+                while (b) {
+                    a = a * 2;
+                    b = b - 1;
+                }
+
+                return a;
+            }
+        "#,
+        );
+
+        assert_matches!(result, RuntimeValue::Int(1024));
     }
 }
