@@ -1,0 +1,80 @@
+---
+source: src/tests/generation.rs
+expression: ir
+---
+segments:
+  1:
+    - Declare:
+        - - then_only
+          - 0
+        - Literal: 1
+    - Declare:
+        - - else_only
+          - 0
+        - Literal: 1
+    - Declare:
+        - - then_else
+          - 0
+        - Literal: 1
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 1
+    - ConditionalJump:
+        - - $lit
+          - 0
+        - 2
+        - 3
+  2:
+    - Declare:
+        - - then_only
+          - 1
+        - Literal: 10
+    - Declare:
+        - - then_else
+          - 1
+        - Literal: 10
+    - InconditionalJump: 4
+  3:
+    - Declare:
+        - - else_only
+          - 1
+        - Literal: 20
+    - Declare:
+        - - then_else
+          - 2
+        - Literal: 20
+    - InconditionalJump: 4
+  4:
+    - Declare:
+        - - then_else
+          - 3
+        - Phi:
+            - - then_else
+              - 1
+            - - then_else
+              - 2
+    - Declare:
+        - - then_only
+          - 2
+        - Phi:
+            - - then_only
+              - 1
+            - - then_only
+              - 0
+    - Declare:
+        - - else_only
+          - 2
+        - Phi:
+            - - else_only
+              - 0
+            - - else_only
+              - 1
+    - Declare:
+        - - $lit
+          - 1
+        - Literal: 0
+    - Return:
+        - $lit
+        - 1
+root_segment_id: 1

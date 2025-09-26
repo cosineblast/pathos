@@ -1,0 +1,44 @@
+---
+source: src/tests/generation.rs
+expression: ir
+---
+segments:
+  1:
+    - Declare:
+        - - a
+          - 0
+        - Literal: 1
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 1
+    - Declare:
+        - - a
+          - 1
+        - Add:
+            - - a
+              - 0
+            - - $lit
+              - 0
+    - Declare:
+        - - b
+          - 0
+        - AnotherValue:
+            - a
+            - 1
+    - Declare:
+        - - $lit
+          - 1
+        - Literal: 1
+    - Declare:
+        - - b
+          - 1
+        - Add:
+            - - b
+              - 0
+            - - $lit
+              - 1
+    - Return:
+        - b
+        - 1
+root_segment_id: 1

@@ -1,0 +1,62 @@
+---
+source: src/tests/generation.rs
+expression: ir
+---
+segments:
+  1:
+    - Declare:
+        - - a
+          - 0
+        - Literal: 1
+    - Declare:
+        - - b
+          - 0
+        - Literal: 10
+    - InconditionalJump: 3
+  2:
+    - Declare:
+        - - $lit
+          - 0
+        - Literal: 2
+    - Declare:
+        - - a
+          - 1
+        - Mul:
+            - - a
+              - 0
+            - - $lit
+              - 0
+    - Declare:
+        - - $lit
+          - 1
+        - Literal: 1
+    - Declare:
+        - - b
+          - 1
+        - Sub:
+            - - b
+              - 0
+            - - $lit
+              - 1
+    - Mutate:
+        - - a
+          - 0
+        - - a
+          - 1
+    - Mutate:
+        - - b
+          - 0
+        - - b
+          - 1
+    - InconditionalJump: 3
+  3:
+    - ConditionalJump:
+        - - b
+          - 0
+        - 2
+        - 4
+  4:
+    - Return:
+        - a
+        - 0
+root_segment_id: 1
