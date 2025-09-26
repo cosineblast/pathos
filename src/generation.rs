@@ -257,6 +257,44 @@ impl IRGenerationState {
         }
     }
 
+    fn codegen_while(&mut self, condition: &syntax::Expression, block: &syntax::Block) {
+        let (body_start, body_end, body_modifed) = self.codegen_block(block);
+
+        let body_end_segment = self.segments.get_mut(&body_end).unwrap();
+
+        for (name, new_value) in body_modifed {
+            let previous = self.bindings.binding_of(&name).unwrap();
+
+            body_end_segment
+                .0
+                .push(IRInstruction::Mutate(previous.clone(), new_value.clone()));
+        }
+
+        let condition_segment_id = self.next_segment_id;
+
+        self.target_segment
+            .push(IRInstruction::InconditionalJump(condition_segment_id));
+
+        body_end_segment
+            .0
+            .push(IRInstruction::InconditionalJump(condition_segment_id));
+
+        // now, the condition segment
+        self.switch_to_new_segment();
+
+        let final_segment_id = self.next_segment_id;
+
+        let condition_value = self.codegen_expression(condition, None);
+
+        self.target_segment.push(IRInstruction::ConditionalJump(
+            condition_value,
+            body_start,
+            final_segment_id,
+        ));
+
+        self.switch_to_new_segment();
+    }
+
     fn codegen_statement(&mut self, statement: &syntax::Statement) {
         match statement {
             syntax::Statement::Return(expression) => {
@@ -267,43 +305,7 @@ impl IRGenerationState {
             syntax::Statement::If(condition, then_block, else_block) => {
                 self.codegen_conditional(condition, then_block, else_block)
             }
-            syntax::Statement::While(condition, block) => {
-                let (body_start, body_end, body_modifed) = self.codegen_block(block);
-
-                let body_end_segment = self.segments.get_mut(&body_end).unwrap();
-
-                for (name, new_value) in body_modifed {
-                    let previous = self.bindings.binding_of(&name).unwrap();
-
-                    body_end_segment
-                        .0
-                        .push(IRInstruction::Mutate(previous.clone(), new_value.clone()));
-                }
-
-                let condition_segment_id = self.next_segment_id;
-
-                self.target_segment
-                    .push(IRInstruction::InconditionalJump(condition_segment_id));
-
-                body_end_segment
-                    .0
-                    .push(IRInstruction::InconditionalJump(condition_segment_id));
-
-                // now, the condition segment
-                self.switch_to_new_segment();
-
-                let final_segment_id = self.next_segment_id;
-
-                let condition_value = self.codegen_expression(condition, None);
-
-                self.target_segment.push(IRInstruction::ConditionalJump(
-                    condition_value,
-                    body_start,
-                    final_segment_id,
-                ));
-
-                self.switch_to_new_segment();
-            }
+            syntax::Statement::While(condition, block) => self.codegen_while(condition, block),
             syntax::Statement::Assignment(target, expression) => {
                 let name = match target {
                     syntax::Expression::Name(name) => name,
